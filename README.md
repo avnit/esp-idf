@@ -114,3 +114,22 @@ This can be combined with other targets, ie `idf.py -p PORT erase-flash flash` w
 * [Check the Issues section on github](https://github.com/espressif/esp-idf/issues) if you find a bug or have a feature request. Please check existing Issues before opening a new one.
 
 * If you're interested in contributing to ESP-IDF, please check the [Contributions Guide](https://docs.espressif.com/projects/esp-idf/en/latest/contribute/index.html).
+
+<!-- ARCH-DIAGRAM:START -->
+
+## Architecture
+
+> Auto-generated architecture diagram. See [`docs/context-map.md`](docs/context-map.md) for the full context map (core application, containers/cloud, and database connections).
+
+```mermaid
+flowchart TD
+  User([User / Client])
+  App["esp-idf<br/><small>index.js</small><br/>Express / Node"]
+  DB0[("Redis")]
+  Img["Container image<br/>(Docker)"]
+  User --> App
+  App --> DB0
+  App -.deploy.-> Img
+```
+
+<!-- ARCH-DIAGRAM:END -->
