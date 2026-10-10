@@ -170,7 +170,6 @@ def test_ppa_transform(dut: Dut) -> None:
     dut.expect_exact('Loading embedded RGB565 image from flash...')
     dut.expect(r'Embedded raw image size: \d+ bytes')
     dut.expect_exact('Transforming image with PPA SRM...')
-    dut.expect_exact('Blending highlight with PPA blend...')
     dut.expect_exact('Drawing border with PPA fill...')
 
     metadata_line = dut.expect(IMAGE_META_PATTERN).group(0).decode('utf-8')

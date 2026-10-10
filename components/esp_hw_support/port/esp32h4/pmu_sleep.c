@@ -45,6 +45,7 @@ void pmu_sleep_enable_regdma_backup(void)
         pmu_hal_hp_set_sleep_active_backup_enable(PMU_instance()->hal);
         pmu_hal_hp_set_sleep_modem_backup_enable(PMU_instance()->hal);
         pmu_hal_hp_set_modem_active_backup_enable(PMU_instance()->hal);
+        pmu_hal_hp_set_modem_sleep_backup_enable(PMU_instance()->hal);
         s_pmu_sleep_regdma_backup_enabled = true;
     }
 }
@@ -56,6 +57,7 @@ void pmu_sleep_disable_regdma_backup(void)
         pmu_hal_hp_set_sleep_active_backup_disable(PMU_instance()->hal);
         pmu_hal_hp_set_sleep_modem_backup_disable(PMU_instance()->hal);
         pmu_hal_hp_set_modem_active_backup_disable(PMU_instance()->hal);
+        pmu_hal_hp_set_modem_sleep_backup_disable(PMU_instance()->hal);
         s_pmu_sleep_regdma_backup_enabled = false;
     }
 }
@@ -250,14 +252,27 @@ static void pmu_sleep_param_init(pmu_context_t *ctx, const pmu_sleep_param_confi
     pmu_ll_set_xtal_stable_wait_cycle(ctx->hal->dev, param->hp_lp.xtal_stable_wait_slow_clk_cycle);
     pmu_ll_set_pll_stable_wait_cycle(ctx->hal->dev, param->hp_sys.pll_stable_wait_cycle);
 
-#if CONFIG_PM_SKIP_MODEM_TO_ACTIVE_ANALOG_WAIT
+#if CONFIG_PM_MODEM_STATE_ENABLED
     uint16_t ana_wait[ANALOG_WAIT_CTRL_NUM] = {
         0x20,  // about 1.6us
         param->hp_sys.analog_wait_target_cycle,
         param->hp_sys.analog_wait_target_cycle,
     };
     pmu_sleep_power_analog_wait_config(ctx->priv, ana_wait);
-#endif
+#if SOC_PM_MODEM_LOCK_CLK_WORKAROUND
+    pmu_hp_clk_power_reg_t hp_ck = { .val = pmu_ll_hp_get_clk_power(ctx->hal->dev, HP(ACTIVE)) };
+    uint32_t xtalx2_xpd = pmu_ll_hp_get_xtalx2_xpd(ctx->hal->dev, HP(ACTIVE));
+    pmu_imm_hp_clk_power_reg_t imm = {
+        .tie_high_xpd_bbpll         = hp_ck.xpd_bbpll,
+        .tie_high_xpd_bbpll_i2c     = hp_ck.xpd_bbpll_i2c,
+        .tie_high_global_bbpll_icg  = hp_ck.xpd_bbpll || hp_ck.xpd_bbpll_i2c,
+        .tie_high_xtalx2            = xtalx2_xpd,
+        .tie_high_global_xtalx2_icg = xtalx2_xpd,
+    };
+    pmu_sleep_power_clock_config(ctx->priv, imm.val);
+#endif // SOC_PM_MODEM_LOCK_CLK_WORKAROUND
+
+#endif // CONFIG_PM_MODEM_STATE_ENABLED
 }
 
 bool pmu_sleep_pll_already_enabled(void)

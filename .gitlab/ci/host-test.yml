@@ -107,6 +107,22 @@ test_ldgen_on_host:
   variables:
     LC_ALL: C.UTF-8
 
+test_lp_core_custom_linker_on_host:
+  extends:
+    - .host_test_template
+    - .rules:test:host_test_ulp_linker
+  script:
+    - cd components/ulp/test_apps/lp_core/host_tests/lp_core_custom_linker
+    - pytest_for_ut .
+
+test_lp_core_custom_linker_buildv2_on_host:
+  extends:
+    - .host_test_template
+    - .rules:test:host_test_ulp_linker
+  script:
+    - cd components/ulp/test_apps/lp_core/host_tests/lp_core_custom_linker_v2
+    - pytest_for_ut .
+
 test_spiffs_on_host:
   extends: .host_test_template
   script:
@@ -219,6 +235,7 @@ test_tools:
     - run_cmd pytest --confcutdir=. test_idf_qemu.py     --junitxml=${IDF_PATH}/XUNIT_IDF_PY_QEMU.xml  --ignore-result-files ${KNOWN_FAILURE_CASES_FILE_NAME}             || stat=1
     - run_cmd pytest --confcutdir=. test_mcp_ext.py      --junitxml=${IDF_PATH}/XUNIT_MCP_EXT.xml      --ignore-result-files ${KNOWN_FAILURE_CASES_FILE_NAME}             || stat=1
     - run_cmd pytest --confcutdir=. test_build_file.py   --junitxml=${IDF_PATH}/XUNIT_BUILD_FILE.xml   --ignore-result-files ${KNOWN_FAILURE_CASES_FILE_NAME}             || stat=1
+    - run_cmd pytest --confcutdir=. test_serial_ext.py   --junitxml=${IDF_PATH}/XUNIT_SERIAL_EXT.xml   --ignore-result-files ${KNOWN_FAILURE_CASES_FILE_NAME}             || stat=1
     - cd ${IDF_PATH}/tools/test_bsasm
     - run_cmd pytest --confcutdir=. test_bsasm.py        --junitxml=${IDF_PATH}/XUNIT_BSASM.xml        --ignore-result-files ${KNOWN_FAILURE_CASES_FILE_NAME}             || stat=1
     - cd ${IDF_PATH}/tools/test_mkdfu
@@ -294,6 +311,12 @@ test_idf_build_apps_load_soc_caps:
   script:
     - cd tools/ci
     - pytest_for_ut ./test_soc_headers_load_in_idf_build_apps.py
+
+test_dynamic_pipelines_scripts:
+  extends: .host_test_template
+  script:
+    - cd ${IDF_PATH}/tools/ci/dynamic_pipelines/tests
+    - pytest_for_ut ./test_patch_buildv2_child_pipeline.py
 
 test_nvs_gen_check:
   extends: .host_test_template
@@ -378,7 +401,7 @@ build_docker:
       --build-system cmake
       --target $IDF_TARGET
       -m qemu
-      --modified-files ${MR_MODIFIED_FILES}
+      --modified-files \"${MR_MODIFIED_FILES}\"
     - run_cmd idf-ci gitlab download-known-failure-cases-file ${KNOWN_FAILURE_CASES_FILE_NAME}
     - run_cmd pytest
       --target $IDF_TARGET
@@ -416,7 +439,7 @@ test_pytest_qemu:
       -p components -p examples -p tools/test_apps
       --target linux
       --only-test-related
-      --modified-files ${MR_MODIFIED_FILES}
+      --modified-files \"${MR_MODIFIED_FILES}\"
     - run_cmd idf-ci gitlab download-known-failure-cases-file ${KNOWN_FAILURE_CASES_FILE_NAME}
     - run_cmd pytest
       --target linux
@@ -446,7 +469,7 @@ test_pytest_macos:
       --target linux
       --only-test-related
       -m macos
-      --modified-files ${MR_MODIFIED_FILES}
+      --modified-files \"${MR_MODIFIED_FILES}\"
     - run_cmd idf-ci gitlab download-known-failure-cases-file ${KNOWN_FAILURE_CASES_FILE_NAME}
     - run_cmd pytest
       --target linux

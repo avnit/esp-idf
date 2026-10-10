@@ -16,7 +16,7 @@
 #include "flash_qio_mode.h"
 #include "bootloader_flash_config.h"
 #include "bootloader_common.h"
-#include "bootloader_flash_priv.h"
+#include "esp_private/bootloader_flash_internal.h"
 #include "bootloader_init.h"
 #include "hal/mmu_hal.h"
 #include "hal/mmu_ll.h"
@@ -25,6 +25,7 @@
 #include "hal/cache_ll.h"
 #include "hal/clk_tree_ll.h"
 #include "esp_private/bootloader_flash_internal.h"
+#include "spi_flash_defs.h"
 
 void IRAM_ATTR bootloader_flash_update_id(void)
 {
@@ -47,9 +48,9 @@ void IRAM_ATTR bootloader_flash_cs_timing_config(void)
 void IRAM_ATTR bootloader_init_mspi_clock(void)
 {
     cache_hal_disable(CACHE_LL_LEVEL_EXT_MEM, CACHE_TYPE_ALL);
-    clk_ll_bbpll_enable();
+    clk_ll_cpll_enable();
     _mspi_timing_ll_set_flash_core_clock(0, 80);
-    _mspi_timing_ll_set_flash_clk_src(0, FLASH_CLK_SRC_BBPLL);
+    _mspi_timing_ll_set_flash_clk_src(0, FLASH_CLK_SRC_CPLL);
     cache_hal_enable(CACHE_LL_LEVEL_EXT_MEM, CACHE_TYPE_ALL);
 }
 

@@ -4,16 +4,21 @@ entries:
 
 [sections:high_perf_iram_text]
 entries:
-    .high_perf_code_iram1+
+    .iram_high_perf+
+    .critical_iram+
 
 [sections:adv_fast_execute_code_iram_text]
 entries:
-    .adv_fast_execute_code_iram1+
+    .iram_adv_fast_tx+
 
 [sections:sleep_text]
 entries:
     .iram_sleep+
     .iram_btslp+
+
+[sections:sleep_text_fast_adv]
+entries:
+    .iram_adv_fast_tx_sleep_adv+
 
 [sections:sleep_text_adv]
 entries:
@@ -49,6 +54,11 @@ entries:
     else:
         sleep_text -> flash_text
 
+    if BT_LE_CTRL_ADV_FAST_TX_EN = y || BT_CTRL_LE_ADV_SLEEP_CODE_IN_IRAM = y:
+        sleep_text_fast_adv -> iram0_text
+    else:
+        sleep_text_fast_adv -> flash_text
+
     if BT_CTRL_LE_ADV_SLEEP_CODE_IN_IRAM = y:
         sleep_text_adv->iram0_text
     else:
@@ -76,6 +86,10 @@ entries:
 [mapping:bt]
 archive: libbt.a
 entries:
+    if BT_CTRL_SLEEP_RELATED_CODE_IN_IRAM = y:
+        btdm_lp:btdm_lp_sleep_cb (noflash)
+        btdm_lp:btdm_lp_wake_up_cb (noflash)
+
     if ESP_ALLOW_BSS_SEG_EXTERNAL_MEMORY = y:
         * (bt_extram_bss);
             bt_bss -> extern_ram ALIGN(4) ALIGN(4, post) SURROUND(bt_bss),

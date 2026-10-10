@@ -143,6 +143,10 @@ config SOC_BOD_SUPPORTED
     bool
     default y
 
+config SOC_RISCV_TRACE_SUPPORTED
+    bool
+    default y
+
 config SOC_PMU_SUPPORTED
     bool
     default y
@@ -176,6 +180,10 @@ config SOC_SPI_FLASH_SUPPORTED
     default y
 
 config SOC_SPI_EXTERNAL_NOR_FLASH_SUPPORTED
+    bool
+    default y
+
+config SOC_RNG_SUPPORTED
     bool
     default y
 
@@ -342,6 +350,14 @@ config SOC_SHARED_IDCACHE_SUPPORTED
 config SOC_CACHE_FREEZE_SUPPORTED
     bool
     default y
+
+config SOC_CACHE_CNT_SUPPORTED
+    bool
+    default y
+
+config SOC_CACHE_CNT_UNITS_NUM
+    int
+    default 2
 
 config SOC_CPU_CORES_NUM
     int
@@ -539,6 +555,10 @@ config SOC_I2C_SLAVE_CAN_GET_STRETCH_CAUSE
     bool
     default y
 
+config SOC_I2C_SUPPORT_SLEEP_RETENTION
+    bool
+    default y
+
 config SOC_I2S_HW_VERSION_2
     bool
     default y
@@ -559,9 +579,21 @@ config SOC_I2S_SUPPORTS_PDM_TX
     bool
     default y
 
+config SOC_I2S_SUPPORTS_PCM2PDM
+    bool
+    default y
+
+config SOC_I2S_SUPPORTS_PDM_RX
+    bool
+    default y
+
 config SOC_I2S_PDM_MAX_TX_LINES
     int
     default 2
+
+config SOC_I2S_PDM_MAX_RX_LINES
+    int
+    default 1
 
 config SOC_I2S_SUPPORTS_TDM
     bool
@@ -843,6 +875,10 @@ config SOC_EFUSE_DIS_ICACHE
     bool
     default y
 
+config SOC_EFUSE_DIS_DOWNLOAD_MSPI
+    bool
+    default y
+
 config SOC_EFUSE_ECDSA_KEY
     bool
     default y
@@ -1019,10 +1055,6 @@ config SOC_PM_PAU_LINK_NUM
     int
     default 5
 
-config SOC_PM_RETENTION_MODULE_NUM
-    int
-    default 32
-
 config SOC_PM_PAU_REGDMA_LINK_CONFIGURABLE
     bool
     default y
@@ -1146,3 +1178,15 @@ config SOC_BLE_PERIODIC_ADV_WITH_RESPONSE
 config SOC_DEBUG_HAVE_OCD_STUB_BINS
     bool
     default y
+
+config SOC_RISCV_TRACE_PACKET_FORMAT_VER
+    int
+    default 100
+
+config SOC_RISCV_TRACE_PRIV_WIDTH
+    int
+    default 1
+
+config SOC_RISCV_TRACE_ECAUSE_WIDTH
+    int
+    default 5

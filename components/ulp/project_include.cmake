@@ -7,10 +7,10 @@ endif()
 # Create ULP binary and embed into the application.
 
 function(__setup_ulp_project app_name project_path prefix prefix_append_bin_name type binary_names
-                             s_sources exp_dep_srcs)
+                             s_sources exp_dep_srcs linker_script)
 
     if(NOT CMAKE_BUILD_EARLY_EXPANSION)
-        set(ulp_cmake_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/cmake")
+        set(ulp_subproject_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/subproject")
         set(sources "")
         spaces2list(s_sources)
         foreach(source ${s_sources})
@@ -95,7 +95,7 @@ function(__setup_ulp_project app_name project_path prefix prefix_append_bin_name
                                         "Only FSM type is available for ULP on this target.")
                 endif()
             endif()
-            set(TOOLCHAIN_FLAG ${ulp_cmake_dir}/toolchain-${idf_target}-ulp.cmake)
+            set(TOOLCHAIN_FLAG ${ulp_subproject_dir}/components/ulp_fsm/toolchain-${idf_target}-ulp.cmake)
             set(ULP_IS_RISCV OFF)
         elseif(IDF_TARGET STREQUAL "esp32s2" OR IDF_TARGET STREQUAL "esp32s3")
             # If both FSM and RISC-V are enabled in sdkconfig and a TYPE was
@@ -105,21 +105,21 @@ function(__setup_ulp_project app_name project_path prefix prefix_append_bin_name
                 message(STATUS "Both RISCV and FSM are enabled, using '${type}' toolchain for ${app_name} ULP project.")
                 string(TOLOWER "${type}" type_lower)
                 if(type_lower STREQUAL "riscv")
-                    set(TOOLCHAIN_FLAG ${ulp_cmake_dir}/toolchain-ulp-riscv.cmake)
+                    set(TOOLCHAIN_FLAG ${ulp_subproject_dir}/components/ulp_riscv/toolchain-ulp-riscv.cmake)
                 elseif(type_lower STREQUAL "fsm")
-                    set(TOOLCHAIN_FLAG ${ulp_cmake_dir}/toolchain-${idf_target}-ulp.cmake)
+                    set(TOOLCHAIN_FLAG ${ulp_subproject_dir}/components/ulp_fsm/toolchain-${idf_target}-ulp.cmake)
                 else()
                     message(FATAL_ERROR "Invalid ULP_TYPE '${type}'; expected 'fsm' or 'riscv'.")
                 endif()
             else()
                 if(CONFIG_ULP_COPROC_TYPE_RISCV STREQUAL "y")
-                    set(TOOLCHAIN_FLAG ${ulp_cmake_dir}/toolchain-ulp-riscv.cmake)
+                    set(TOOLCHAIN_FLAG ${ulp_subproject_dir}/components/ulp_riscv/toolchain-ulp-riscv.cmake)
                 else()
-                    set(TOOLCHAIN_FLAG ${ulp_cmake_dir}/toolchain-${idf_target}-ulp.cmake)
+                    set(TOOLCHAIN_FLAG ${ulp_subproject_dir}/components/ulp_fsm/toolchain-${idf_target}-ulp.cmake)
                 endif()
             endif()
         elseif(CONFIG_ULP_COPROC_TYPE_LP_CORE)
-                set(TOOLCHAIN_FLAG ${ulp_cmake_dir}/toolchain-lp-core-riscv.cmake)
+                set(TOOLCHAIN_FLAG ${ulp_subproject_dir}/components/lp_core/toolchain-lp-core-riscv.cmake)
         endif()
 
         set(ulp_project_args)
@@ -133,7 +133,7 @@ function(__setup_ulp_project app_name project_path prefix prefix_append_bin_name
                 -DIDF_DEFAULT_PROJECT_NAME=${app_name}
                 -DULP_APP_NAME=${app_name}
                 -DIDF_BUILD_V2=y
-                -DCMAKE_MODULE_PATH=${ulp_cmake_dir}
+                -DCMAKE_MODULE_PATH=${ulp_subproject_dir}
                 # Internal marker for ULP child component graphs. Only the
                 # IDF_BUILD_V2 path sets it for now.
                 -D__ULP_BUILDV2=1
@@ -176,7 +176,7 @@ function(__setup_ulp_project app_name project_path prefix prefix_append_bin_name
                 -DSDKCONFIG_HEADER=${SDKCONFIG_HEADER}
                 -DSDKCONFIG_CMAKE=${SDKCONFIG_CMAKE}
                 # The v1 ULP child resolves include(IDFULPProject) via the module path.
-                -DCMAKE_MODULE_PATH=${ulp_cmake_dir})
+                -DCMAKE_MODULE_PATH=${ulp_subproject_dir})
         endif()
 
         externalproject_add(${app_name}
@@ -189,6 +189,9 @@ function(__setup_ulp_project app_name project_path prefix prefix_append_bin_name
                         -DADD_PICOLIBC_SPECS=${CONFIG_LIBC_PICOLIBC}
                         -DULP_VAR_PREFIX=${prefix}
                         -DULP_TYPE=${type}
+                        # Read by the LP-core child to swap in a custom layout;
+                        # empty and ignored otherwise.
+                        -DLP_CORE_LINKER_SCRIPT=${linker_script}
                         ${ulp_project_args}
                         -DIDF_TARGET=${idf_target}
                         -DIDF_PATH=${idf_path}
@@ -276,26 +279,52 @@ function(__ulp_resolve_type out_var type)
     set(${out_var} "${resolved_type}" PARENT_SCOPE)
 endfunction()
 
+# Resolve a user-supplied LINKER_LAYOUT for a ULP of the given (already resolved)
+# type: reject it for non-LP-core types, since only the LP-core linker script has
+# a swappable layout part, then resolve the layout to an absolute path and verify
+# it exists. The result is written back to the variable named by out_var. A
+# relative path is resolved against CMAKE_CURRENT_LIST_DIR, the same base used for
+# relative ULP source files in __setup_ulp_project, so that sources and the linker
+# layout in one call are resolved consistently. Enforcing this here, at the public
+# API, gives a single check that covers every ULP child build style.
+function(__resolve_lp_core_linker linker type out_var)
+    if(linker)
+        if(NOT type STREQUAL "lp_core")
+            message(FATAL_ERROR "A custom LINKER_LAYOUT script is only supported for the LP-core ULP type.")
+        endif()
+        get_filename_component(linker "${linker}" ABSOLUTE BASE_DIR ${CMAKE_CURRENT_LIST_DIR})
+        if(NOT EXISTS "${linker}")
+            message(FATAL_ERROR "LINKER_LAYOUT linker script not found: ${linker}")
+        endif()
+    endif()
+    set(${out_var} "${linker}" PARENT_SCOPE)
+endfunction()
+
 function(ulp_embed_binary app_name s_sources exp_dep_srcs)
-    cmake_parse_arguments(ULP "" "PREFIX;TYPE" "" ${ARGN})
+    cmake_parse_arguments(ULP "" "PREFIX;TYPE;LINKER_LAYOUT" "" ${ARGN})
     if(NOT ULP_PREFIX)
         set(ULP_PREFIX "ulp_")
     endif()
 
     validate_ulp_type("${ULP_TYPE}")
+    # Resolve the effective ULP type (from TYPE or the project config) so the
+    # LINKER_LAYOUT guard is applied uniformly; the full-subproject child also
+    # consumes the resolved type.
+    __ulp_resolve_type(ulp_resolved_type "${ULP_TYPE}")
     if(IDF_BUILD_V2)
-        __ulp_resolve_type(ULP_TYPE "${ULP_TYPE}")
+        set(ULP_TYPE "${ulp_resolved_type}")
     endif()
-    set(ulp_cmake_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/cmake")
+    __resolve_lp_core_linker("${ULP_LINKER_LAYOUT}" "${ulp_resolved_type}" LP_CORE_LINKER)
+    set(ulp_subproject_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/subproject")
 
-    __setup_ulp_project("${app_name}" "${ulp_cmake_dir}"
+    __setup_ulp_project("${app_name}" "${ulp_subproject_dir}"
                         "${ULP_PREFIX}" FALSE "${ULP_TYPE}"
                         "${app_name}"
-                        "${s_sources}" "${exp_dep_srcs}")
+                        "${s_sources}" "${exp_dep_srcs}" "${LP_CORE_LINKER}")
 endfunction()
 
 function(ulp_add_project app_name project_path)
-    cmake_parse_arguments(ULP "" "PREFIX;TYPE" "BINARIES" ${ARGN})
+    cmake_parse_arguments(ULP "" "PREFIX;TYPE;LINKER_LAYOUT" "BINARIES" ${ARGN})
     if(NOT ULP_BINARIES)
         set(ULP_BINARIES "${app_name}")
     endif()
@@ -311,10 +340,15 @@ function(ulp_add_project app_name project_path)
     endif()
 
     validate_ulp_type("${ULP_TYPE}")
+    # Resolve the effective ULP type (from TYPE or the project config) so the
+    # LINKER_LAYOUT guard is applied uniformly; the full-subproject child also
+    # consumes the resolved type.
+    __ulp_resolve_type(ulp_resolved_type "${ULP_TYPE}")
     if(IDF_BUILD_V2)
-        __ulp_resolve_type(ULP_TYPE "${ULP_TYPE}")
+        set(ULP_TYPE "${ulp_resolved_type}")
     endif()
+    __resolve_lp_core_linker("${ULP_LINKER_LAYOUT}" "${ulp_resolved_type}" LP_CORE_LINKER)
 
     __setup_ulp_project("${app_name}" "${project_path}" "${ULP_PREFIX}"
-                        "${ULP_PREFIX_APPEND_BIN_NAME}" "${ULP_TYPE}" "${ULP_BINARIES}" "" "")
+                        "${ULP_PREFIX_APPEND_BIN_NAME}" "${ULP_TYPE}" "${ULP_BINARIES}" "" "" "${LP_CORE_LINKER}")
 endfunction()

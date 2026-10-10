@@ -11,21 +11,9 @@ Two configurations:
              at a time via the Unity menu, expecting a panic.
 """
 
-import os
-
 import pytest
 from pytest_embedded import Dut
 from pytest_embedded_idf.utils import idf_parametrize
-
-# KASAN instrumentation is not yet emitted under build system v2, so the test
-# binary never reports a KASAN error and these cases would always fail. Skip the
-# whole module at collection time so no target_test job is even generated for it.
-# TODO: IDF-15864
-if os.environ.get('IDF_BUILD_V2') == '1':
-    pytest.skip(
-        'KASAN is not yet supported under build system v2. TODO: IDF-15864',
-        allow_module_level=True,
-    )
 
 # ---------------------------------------------------------------------------
 # no_halt configuration: all tests pass in one run
@@ -103,6 +91,16 @@ def test_kasan_halt_no_false_positive(dut: Dut) -> None:
     dut.expect('KASAN test application starting', timeout=15)
     dut.write('"no false positive"')
     dut.expect('no-bug test PASSED', timeout=15)
+
+
+@pytest.mark.generic
+@idf_parametrize('target', ['supported_targets', 'preview_targets'], indirect=['target'])
+@pytest.mark.parametrize('config', ['halt'], indirect=True)
+def test_kasan_halt_aligned_alloc(dut: Dut) -> None:
+    """KASAN redzones must not change aligned allocator guarantees."""
+    dut.expect('KASAN test application starting', timeout=15)
+    dut.write('"aligned allocation preserves alignment"')
+    dut.expect('aligned allocation test PASSED', timeout=15)
 
 
 @pytest.mark.generic

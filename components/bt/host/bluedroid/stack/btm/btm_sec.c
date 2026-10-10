@@ -622,8 +622,7 @@ static BOOLEAN btm_sec_set_security_level (CONNECTION_TYPE conn_type, const char
     if (is_originator) {
         p_srec->orig_mx_chan_id = mx_chan_id;
 #if BTM_SEC_SERVICE_NAME_LEN > 0
-        BCM_STRNCPY_S ((char *)p_srec->orig_service_name, p_name, BTM_SEC_SERVICE_NAME_LEN);
-        p_srec->orig_service_name[BTM_SEC_SERVICE_NAME_LEN] = '\0';
+        BCM_STRLCPY_S((char *)p_srec->orig_service_name, p_name, BTM_SEC_SERVICE_NAME_LEN + 1);
 #endif
         /* clear out the old setting, just in case it exists */
 #if (L2CAP_UCD_INCLUDED == TRUE)
@@ -668,8 +667,7 @@ static BOOLEAN btm_sec_set_security_level (CONNECTION_TYPE conn_type, const char
     } else {
         p_srec->term_mx_chan_id = mx_chan_id;
 #if BTM_SEC_SERVICE_NAME_LEN > 0
-        BCM_STRNCPY_S ((char *)p_srec->term_service_name, p_name, BTM_SEC_SERVICE_NAME_LEN);
-        p_srec->term_service_name[BTM_SEC_SERVICE_NAME_LEN] = '\0';
+        BCM_STRLCPY_S((char *)p_srec->term_service_name, p_name, BTM_SEC_SERVICE_NAME_LEN + 1);
 #endif
         /* clear out the old setting, just in case it exists */
 #if (L2CAP_UCD_INCLUDED == TRUE)
@@ -3117,8 +3115,7 @@ void btm_sec_rmt_name_request_complete (UINT8 *p_bd_addr, UINT8 *p_bd_name, UINT
     if (p_dev_rec) {
         old_sec_state = p_dev_rec->sec_state;
         if (status == HCI_SUCCESS) {
-            BCM_STRNCPY_S ((char *)p_dev_rec->sec_bd_name, (char *)p_bd_name, BTM_MAX_REM_BD_NAME_LEN);
-            p_dev_rec->sec_bd_name[BTM_MAX_REM_BD_NAME_LEN] = '\0';
+            BCM_STRLCPY_S((char *)p_dev_rec->sec_bd_name, (char *)p_bd_name, BTM_MAX_REM_BD_NAME_LEN + 1);
             p_dev_rec->sec_flags |= BTM_SEC_NAME_KNOWN;
             BTM_TRACE_EVENT ("setting BTM_SEC_NAME_KNOWN sec_flags:0x%x\n", p_dev_rec->sec_flags);
         } else {
@@ -3861,8 +3858,7 @@ void btm_rem_oob_req (UINT8 *p)
             btm_cb.api.p_sp_callback) {
         memcpy (evt_data.bd_addr, p_dev_rec->bd_addr, BD_ADDR_LEN);
         memcpy (evt_data.dev_class, p_dev_rec->dev_class, DEV_CLASS_LEN);
-        BCM_STRNCPY_S((char *)evt_data.bd_name, (char *)p_dev_rec->sec_bd_name, BTM_MAX_REM_BD_NAME_LEN);
-        evt_data.bd_name[BTM_MAX_REM_BD_NAME_LEN] = '\0';
+        BCM_STRLCPY_S((char *)evt_data.bd_name, (char *)p_dev_rec->sec_bd_name, BTM_MAX_REM_BD_NAME_LEN + 1);
 
         btm_sec_change_pairing_state(BTM_PAIR_STATE_WAIT_LOCAL_OOB_RSP);
         if ((*btm_cb.api.p_sp_callback) (BTM_SP_RMT_OOB_EVT, (tBTM_SP_EVT_DATA *)&evt_data) == BTM_NOT_AUTHORIZED) {
@@ -4255,12 +4251,36 @@ void btm_sec_encrypt_change (UINT16 handle, UINT8 status, UINT8 encr_enable)
     }
 
     if (p_acl && p_acl->transport == BT_TRANSPORT_LE) {
-        if (status == HCI_ERR_KEY_MISSING || status == HCI_ERR_AUTH_FAILURE ||
-                status == HCI_ERR_ENCRY_MODE_NOT_ACCEPTABLE) {
-            p_dev_rec->sec_flags &= ~ (BTM_SEC_LE_LINK_KEY_KNOWN);
+        BOOLEAN disconnect = (status != HCI_SUCCESS);
+        BD_ADDR pseudo_addr;
+
+        /* btm_ble_link_encrypted() runs the SMP state machine and the upper layer
+           callbacks, which may retire p_dev_rec, so keep our own copy of the address. */
+        memcpy(pseudo_addr, p_dev_rec->ble.pseudo_addr, BD_ADDR_LEN);
+
+#if (BLE_SMP_UNBOND_ON_KEY_MISSING == TRUE)
+        /* The peer answered our LL_ENC_REQ saying it no longer holds the LTK. Forget our
+           copy and keep the link up so the application can pair again right away. This is
+           unauthenticated, an impersonator can report the same error to strip the stored
+           security level, which is why the option defaults to disabled. */
+        if (disconnect && status == HCI_ERR_KEY_MISSING && p_acl->link_role == BTM_ROLE_MASTER) {
+            BTM_TRACE_WARNING("%s peer reports no LTK, dropping the local LE keys\n", __func__);
+            p_dev_rec->sec_flags &= ~(BTM_SEC_LE_LINK_KEY_KNOWN);
             p_dev_rec->ble.key_type = BTM_LE_KEY_NONE;
+            disconnect = FALSE;
         }
-        btm_ble_link_encrypted(p_dev_rec->ble.pseudo_addr, encr_enable);
+#endif  ///BLE_SMP_UNBOND_ON_KEY_MISSING == TRUE
+
+        btm_ble_link_encrypted(pseudo_addr, encr_enable);
+
+        /* A peer that refuses to encrypt must not be able to drop our bond, otherwise it
+           can strip the stored security level and then re-pair at a weaker one. Tear the
+           link down instead and keep the keys until the application unbonds. */
+        if (disconnect && BTM_IsAclConnectionUp(pseudo_addr, BT_TRANSPORT_LE)) {
+            BTM_TRACE_WARNING("%s LE encryption failed (status 0x%02x), disconnecting\n",
+                              __func__, status);
+            btm_remove_acl(pseudo_addr, BT_TRANSPORT_LE);
+        }
         return;
     } else {
         /* BR/EDR connection, update the encryption key size to be 16 as always */
@@ -4285,10 +4305,10 @@ void btm_sec_encrypt_change (UINT16 handle, UINT8 status, UINT8 encr_enable)
                 if (p_dev_rec->no_smp_on_br) {
                     BTM_TRACE_DEBUG ("%s NO SM over BR/EDR\n", __func__);
                 } else {
-#if (CLASSIC_BT_INCLUDED == TRUE)
+#if (SMP_CTKD_INCLUDED == TRUE)
                     BTM_TRACE_DEBUG ("%s start SM over BR/EDR\n", __func__);
                     SMP_BR_PairWith(p_dev_rec->bd_addr);
-#endif  ///CLASSIC_BT_INCLUDED == TRUE
+#endif
                 }
             }
         } else {

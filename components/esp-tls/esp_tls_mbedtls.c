@@ -55,6 +55,16 @@ static mbedtls_x509_crt *global_cacert = NULL;
 #define NEWLIB_NANO_SIZE_T_COMPAT_CAST(size_t_var)  size_t_var
 #endif
 
+/* Setting a max session ticket count here to not get stuck
+ * reading the session tickets from server.
+ * The iteration count is incremented twice foe each session ticket
+ * message, i.e. a value of 10 means max 5 session tickets
+ * can be received.
+ */
+#if defined(CONFIG_MBEDTLS_SSL_PROTO_TLS1_3)
+#define ESP_TLS_MBEDTLS_MAX_NEW_SESSION_TICKETS 10
+#endif // CONFIG_MBEDTLS_SSL_PROTO_TLS1_3
+
 #ifdef CONFIG_MBEDTLS_HARDWARE_ECDSA_SIGN
 /**
  * @brief Convert ESP-TLS ECDSA curve enum to ESP ECDSA curve
@@ -239,6 +249,9 @@ esp_tls_client_session_t *esp_mbedtls_get_client_session(esp_tls_t *tls)
     if (ret != 0) {
         ESP_LOGE(TAG, "Error in obtaining the client ssl session");
         mbedtls_print_error_msg(ret);
+        /* mbedtls_ssl_get_session() does not clean up the destination
+         * session on failure, a partial deep copy may already be held. */
+        mbedtls_ssl_session_free(&client_session->saved_session);
         free(client_session);
         return NULL;
     }
@@ -288,11 +301,22 @@ int esp_mbedtls_handshake(esp_tls_t *tls, const esp_tls_cfg_t *cfg)
             ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_MBEDTLS, -ret);
             ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED);
             if (cfg->crt_bundle_attach != NULL || cfg->cacert_buf != NULL || cfg->use_global_ca_store == true) {
-                if (mbedtls_ssl_get_peer_cert(&tls->ssl) != NULL) {
-                    /* This is to check whether handshake failed due to invalid certificate*/
+                /* Check whether the handshake failed because of an invalid certificate.
+                 * Three values are not certificate failures:
+                 * - 0xFFFFFFFF is the initial value of verify_result. mbedTLS sets it in
+                 *   mbedtls_ssl_session_init() to mark the result as not available, and also
+                 *   returns it when the session context is absent.
+                 * - 0 means that the peer certificate passed verification, and that the
+                 *   handshake failed for a different reason.
+                 * - MBEDTLS_X509_BADCERT_SKIP_VERIFY means that mbedTLS did not verify a
+                 *   certificate at all. A TLS 1.3 handshake that resumes a session uses a
+                 *   PSK key exchange, and mbedTLS marks the result as skipped. */
+                uint32_t verify_result = mbedtls_ssl_get_verify_result(&tls->ssl);
+                if (verify_result != 0 && verify_result != 0xFFFFFFFF
+                        && verify_result != MBEDTLS_X509_BADCERT_SKIP_VERIFY) {
                     esp_mbedtls_verify_certificate(tls);
                 } else {
-                    ESP_LOGD(TAG, "Skipping certificate verification - no peer certificate received");
+                    ESP_LOGD(TAG, "Skipping certificate verification - handshake did not fail on the peer certificate");
                 }
             }
             tls->conn_state = ESP_TLS_FAIL;
@@ -317,23 +341,33 @@ ssize_t esp_mbedtls_read(esp_tls_t *tls, char *data, size_t datalen)
      * to process session tickets in TLS 1.3 connection.
      * This handshake message should be processed by mbedTLS and not by the application.
      */
+    int iterations = 0;
     if (mbedtls_ssl_get_version_number(&tls->ssl) == MBEDTLS_SSL_VERSION_TLS1_3) {
         while (ret == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET || tls->ssl.MBEDTLS_PRIVATE(state) == MBEDTLS_SSL_TLS1_3_NEW_SESSION_TICKET) {
+            if (++iterations > ESP_TLS_MBEDTLS_MAX_NEW_SESSION_TICKETS) {
+                ESP_LOGE(TAG, "Too many iterations waiting for new session ticket in TLS 1.3 connection");
+                ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_INVALID_RESPONSE);
+                return -1;
+            }
             ESP_LOGD(TAG, "got session ticket in TLS 1.3 connection, retry read");
 #if CONFIG_ESP_TLS_CLIENT_SESSION_TICKETS
             if (ret == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) {
                 esp_tls_client_session_t *tls13_saved_client_session = calloc(1, sizeof(esp_tls_client_session_t));
                 if (tls13_saved_client_session == NULL) {
                     ESP_LOGE(TAG, "Failed to allocate memory for client session ctx");
-                    return ESP_ERR_NO_MEM;
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_NO_MEM);
+                    return -1;
                 }
 
                 ret = mbedtls_ssl_get_session(&tls->ssl, &tls13_saved_client_session->saved_session);
                 if (ret != 0) {
                     ESP_LOGE(TAG, "Error in getting the client ssl session");
+                    mbedtls_ssl_session_free(&tls13_saved_client_session->saved_session);
                     free(tls13_saved_client_session);
                     tls13_saved_client_session = NULL;
-                    return ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED;
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED);
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_MBEDTLS, -ret);
+                    return -1;
                 }
                 ESP_LOGD(TAG, "Session ticket received");
 
@@ -341,33 +375,48 @@ ssize_t esp_mbedtls_read(esp_tls_t *tls, char *data, size_t datalen)
                 ret = mbedtls_ssl_session_save(&tls13_saved_client_session->saved_session, NULL, 0, &session_ticket_len);
                 if (ret != MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL) {
                     ESP_LOGE(TAG, "Error in getting the client ssl session length");
+                    mbedtls_ssl_session_free(&tls13_saved_client_session->saved_session);
                     free(tls13_saved_client_session);
                     tls13_saved_client_session = NULL;
-                    return ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED;
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED);
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_MBEDTLS, -ret);
+                    return -1;
                 }
 
                 ESP_LOGD(TAG, "Session ticket length: %zu", session_ticket_len);
                 if (tls->client_session != NULL) {
+                    mbedtls_platform_zeroize(tls->client_session, tls->client_session_len);
                     free(tls->client_session);
                     tls->client_session = NULL;
+                    tls->client_session_len = 0;
                 }
                 /* Allocate memory for the session ticket */
                 tls->client_session = calloc(1, session_ticket_len);
                 if (tls->client_session == NULL) {
                     ESP_LOGE(TAG, "Failed to allocate memory for client session ctx");
+                    mbedtls_ssl_session_free(&tls13_saved_client_session->saved_session);
                     free(tls13_saved_client_session);
                     tls13_saved_client_session = NULL;
-                    return ESP_ERR_NO_MEM;
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_NO_MEM);
+                    return -1;
                 }
-                ret = mbedtls_ssl_session_save(&tls13_saved_client_session->saved_session, (unsigned char *)tls->client_session, session_ticket_len, &session_ticket_len);
+                /* mbedtls_ssl_session_save() may update session_ticket_len in/out, so
+                 * remember the allocated size for the on-failure zeroize below. */
+                size_t client_session_alloc_len = session_ticket_len;
+                ret = mbedtls_ssl_session_save(&tls13_saved_client_session->saved_session, (unsigned char *)tls->client_session, client_session_alloc_len, &session_ticket_len);
                 if (ret != 0) {
                     ESP_LOGE(TAG, "Error in saving the client ssl session");
                     mbedtls_print_error_msg(ret);
+                    mbedtls_platform_zeroize(tls->client_session, client_session_alloc_len);
                     free(tls->client_session);
                     tls->client_session = NULL;
+                    tls->client_session_len = 0;
+                    mbedtls_ssl_session_free(&tls13_saved_client_session->saved_session);
                     free(tls13_saved_client_session);
                     tls13_saved_client_session = NULL;
-                    return ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED;
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_ESP, ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED);
+                    ESP_INT_EVENT_TRACKER_CAPTURE(tls->error_handle, ESP_TLS_ERR_TYPE_MBEDTLS, -ret);
+                    return -1;
                 }
 
                 ESP_LOGD(TAG, "Session ticket saved in the client session context");
@@ -709,6 +758,23 @@ void esp_mbedtls_server_session_ticket_ctx_free(esp_tls_server_session_ticket_ct
 }
 #endif
 
+/**
+ * @brief Apply a user-provided list of TLS supported groups to an mbedtls configuration.
+ *
+ * The list is owned by the caller. mbedtls keeps the pointer, it does not copy the array,
+ * so the array must stay valid for the lifetime of the connection.
+ * An empty list is treated as "not configured", because mbedtls reads a zero-terminated array.
+ */
+static void set_groups_list(mbedtls_ssl_config *conf, const uint16_t *groups_list)
+{
+    if (groups_list == NULL || groups_list[0] == MBEDTLS_SSL_IANA_TLS_GROUP_NONE) {
+        ESP_LOGD(TAG, "No custom supported groups provided - using default");
+        return;
+    }
+    ESP_LOGD(TAG, "Set the supported groups list (user-provided)");
+    mbedtls_ssl_conf_groups(conf, groups_list);
+}
+
 static esp_err_t set_server_config(esp_tls_cfg_server_t *cfg, esp_tls_t *tls)
 {
     assert(cfg != NULL);
@@ -916,6 +982,8 @@ static esp_err_t set_server_config(esp_tls_cfg_server_t *cfg, esp_tls_t *tls)
     } else {
         ESP_LOGD(TAG, "No custom cipher suites provided - using default");
     }
+    set_groups_list(&tls->conf, cfg->groups_list);
+
     return ESP_OK;
 }
 
@@ -1195,6 +1263,8 @@ esp_err_t set_client_config(const char *hostname, size_t hostlen, esp_tls_cfg_t 
         ESP_LOGD(TAG, "Set the ciphersuites list");
         mbedtls_ssl_conf_ciphersuites(&tls->conf, cfg->ciphersuites_list);
     }
+    set_groups_list(&tls->conf, cfg->groups_list);
+
     return ESP_OK;
 }
 
@@ -1348,6 +1418,11 @@ void esp_mbedtls_free_global_ca_store(void)
 const int *esp_mbedtls_get_ciphersuites_list(void)
 {
     return mbedtls_ssl_list_ciphersuites();
+}
+
+const uint16_t *esp_mbedtls_get_supported_groups_list(void)
+{
+    return mbedtls_ssl_get_supported_group_list();
 }
 
 #ifdef CONFIG_ESP_TLS_USE_DS_PERIPHERAL

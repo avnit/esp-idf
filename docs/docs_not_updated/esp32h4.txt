@@ -82,6 +82,7 @@ api-reference/bluetooth/esp_gattc.rst
 api-reference/bluetooth/bt_le.rst
 api-reference/bluetooth/controller_vhci.rst
 api-reference/bluetooth/esp_spp.rst
+api-reference/bluetooth/esp_opp.rst
 api-reference/bluetooth/esp_sdp.rst
 api-reference/bluetooth/esp_blufi.rst
 api-reference/bluetooth/bt_common.rst
@@ -120,13 +121,6 @@ api-reference/peripherals/spi_flash/spi_flash_override_driver.rst
 api-reference/peripherals/spi_flash/spi_flash_optional_feature.rst
 api-reference/peripherals/spi_flash/spi_flash_idf_vs_rom.rst
 api-reference/peripherals/sdmmc_host.rst
-api-reference/system/mm_sync.rst
-api-reference/system/mm.rst
-api-reference/system/esp_https_ota.rst
-api-reference/system/sleep_modes.rst
-api-reference/system/ota.rst
-api-reference/system/inc/power_management_esp32h4.rst
-api-reference/system/power_management.rst
 security/tee/index.rst
 security/tee/tee-advanced.rst
 security/tee/tee-sec-storage.rst

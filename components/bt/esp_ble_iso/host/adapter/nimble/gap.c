@@ -83,7 +83,7 @@ void bt_le_nimble_gap_post_event(void *param)
     int err;
 
     qev = bt_le_ext_calloc(1, sizeof(*qev));
-    assert(qev);
+    BT_LE_ASSERT(qev);
 
     memset(&desc, 0, sizeof(desc));
     ev = param;
@@ -117,7 +117,7 @@ void bt_le_nimble_gap_post_event(void *param)
 
         if (qev->ext_scan_recv.data_len) {
             qev->ext_scan_recv.data = bt_le_ext_calloc(1, qev->ext_scan_recv.data_len);
-            assert(qev->ext_scan_recv.data);
+            BT_LE_ASSERT(qev->ext_scan_recv.data);
 
             memcpy(qev->ext_scan_recv.data, ev->ext_disc.data, qev->ext_scan_recv.data_len);
         }
@@ -172,7 +172,7 @@ void bt_le_nimble_gap_post_event(void *param)
 
         if (qev->pa_sync_recv.data_len) {
             qev->pa_sync_recv.data = bt_le_ext_calloc(1, qev->pa_sync_recv.data_len);
-            assert(qev->pa_sync_recv.data);
+            BT_LE_ASSERT(qev->pa_sync_recv.data);
 
             memcpy(qev->pa_sync_recv.data, ev->periodic_report.data, qev->pa_sync_recv.data_len);
         }
@@ -184,7 +184,7 @@ void bt_le_nimble_gap_post_event(void *param)
         qev->acl_connect.status = ev->connect.status;
         if (qev->acl_connect.status == 0) {
             err = ble_gap_conn_find(ev->connect.conn_handle, &desc);
-            assert(err == 0);
+            BT_LE_ASSERT(err == 0);
 
             qev->acl_connect.conn_handle = desc.conn_handle;
             qev->acl_connect.role = desc.role;
@@ -206,7 +206,7 @@ void bt_le_nimble_gap_post_event(void *param)
         qev->security_change.status = ev->enc_change.status;
         if (qev->security_change.status == 0) {
             err = ble_gap_conn_find(ev->enc_change.conn_handle, &desc);
-            assert(err == 0);
+            BT_LE_ASSERT(err == 0);
 
             qev->security_change.conn_handle = ev->enc_change.conn_handle;
             qev->security_change.role = desc.role;
@@ -262,12 +262,8 @@ void bt_le_nimble_gap_post_event(void *param)
 
     err = bt_le_iso_task_post(q_type, qev, sizeof(*qev));
     if (err) {
-        /* Floodable reports drop by design when the queue is full; only a
-         * failure on the reliable (normal-queue) path is a real error. */
         if (q_type == ISO_QUEUE_ITEM_TYPE_GAP_EVENT) {
-            LOG_ERR("[N]GapPostEvtFail[%d][%u]", err, qev->type);
-        } else {
-            LOG_DBG("[N]GapRptDrop[%u]", qev->type);
+            ISO_POST_FAIL_LOG(err, "[N]GapPostEvtFail[%d][%u]", err, qev->type);
         }
         goto free;
     }
@@ -275,59 +271,5 @@ void bt_le_nimble_gap_post_event(void *param)
     return;
 
 free:
-    switch (qev->type) {
-    case BT_LE_GAP_APP_PARAM_EXT_SCAN_RECV:
-        if (qev->ext_scan_recv.data) {
-            free(qev->ext_scan_recv.data);
-            qev->ext_scan_recv.data = NULL;
-        }
-        break;
-    case BT_LE_GAP_APP_PARAM_PA_SYNC_RECV:
-        if (qev->pa_sync_recv.data) {
-            free(qev->pa_sync_recv.data);
-            qev->pa_sync_recv.data = NULL;
-        }
-        break;
-    default:
-        break;
-    }
-
-    free(qev);
-}
-
-int bt_le_nimble_scan_start(const struct bt_le_scan_param *param, ble_gap_event_fn *cb)
-{
-    struct ble_gap_ext_disc_params uncoded = {0};
-    int rc;
-
-    LOG_DBG("[N]ScanStart[%u][%u][%u]", param->type, param->interval, param->window);
-
-    uncoded.itvl = param->interval;
-    uncoded.window = param->window;
-    uncoded.passive = !param->type;
-
-    /* LE Audio sources broadcast via extended advertising; legacy
-     * ble_gap_disc would miss them. Uncoded-only mirrors the Bluedroid
-     * side which sets BTM_BLE_GAP_EXT_SCAN_UNCODE_MASK. */
-    rc = ble_gap_ext_disc(BLE_OWN_ADDR_PUBLIC, 0, 0, 0, 0, 0,
-                          &uncoded, NULL, cb, NULL);
-    if (rc) {
-        LOG_ERR("[N]ScanStartFail[%d]", rc);
-    }
-
-    return nimble_err_to_errno(rc);
-}
-
-int bt_le_nimble_scan_stop(void)
-{
-    int rc;
-
-    LOG_DBG("[N]ScanStop");
-
-    rc = ble_gap_disc_cancel();
-    if (rc) {
-        LOG_ERR("[N]ScanStopFail[%d]", rc);
-    }
-
-    return nimble_err_to_errno(rc);
+    bt_le_gap_event_free(qev);
 }

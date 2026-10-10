@@ -35,14 +35,17 @@
     TEST_BUILD_OPTS_EXTRA: ""
   script:
     # CI specific options start from "--parallel-count xxx". could ignore when running locally
+    #
+    # In addition to the default sdkconfig.ci.* configs, build the
+    # sdkconfig.ci_clang.* configs, which are meant only for the clang build
+    # jobs (the generic build jobs would build them with the GCC toolchain).
     - run_cmd idf-build-apps build
       -p tools/test_apps/system/clang_build_test
       components/esp_security/test_apps/fault_assert_opt_check
       -t $IDF_TARGET
-      --parallel-count ${CI_NODE_TOTAL:-1}
-      --parallel-index ${CI_NODE_INDEX:-1}
-      --modified-components ${MR_MODIFIED_COMPONENTS}
-      --modified-files ${MR_MODIFIED_FILES}
+      --config-rules "sdkconfig.ci=default" "sdkconfig.ci.*=" "sdkconfig.ci_clang.*="
+      --modified-components \"${MR_MODIFIED_COMPONENTS}\"
+      --modified-files \"${MR_MODIFIED_FILES}\"
       $TEST_BUILD_OPTS_EXTRA
 
 build_clang_test_apps_xtensa:
@@ -63,6 +66,30 @@ build_clang_test_apps_riscv:
   parallel:
     matrix:
       - IDF_TARGET: [esp32c3, esp32c2, esp32c6, esp32c5, esp32h2, esp32p4]
+
+####################################
+# Clang Build Apps With Test Cases #
+####################################
+build_clang_test_apps_esp32s3:
+  extends: .build_template
+  needs:
+    - pipeline_variables
+  artifacts:
+    paths:
+      - "**/build*/build_log.txt"
+      - build_summary_*.xml
+      - app_info_*.txt
+    expire_in: 1 week
+    when: always
+  variables:
+    IDF_TOOLCHAIN: clang
+    IDF_TARGET: esp32s3
+  script:
+    - run_cmd idf-ci build run
+      -p components/freertos/test_apps/task_self_delete
+      --target $IDF_TARGET
+      --only-test-related
+      --modified-files \"${MR_MODIFIED_FILES}\"
 
 ####################
 # Dynamic Pipeline #
@@ -104,11 +131,11 @@ generate_build_child_pipeline_buildv2:
     expire_in: 1 week
     when: always
   script:
-    - idf-ci --debug gitlab build-child-pipeline
+    - run_cmd idf-ci --debug gitlab build-child-pipeline
       -p components
       -p examples
       -p tools/test_apps
-      --modified-files "$MR_MODIFIED_FILES"
+      --modified-files \"${MR_MODIFIED_FILES}\"
       buildv2_child_pipeline.yml > idfci_buildv2_gen.log 2>&1
     - tail -20 idfci_buildv2_gen.log
     - shuf test_related_apps.txt -o test_related_apps.txt

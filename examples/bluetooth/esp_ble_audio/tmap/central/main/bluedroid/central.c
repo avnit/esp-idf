@@ -28,11 +28,6 @@ static esp_bt_status_t scan_op_status;
 
 #define WAIT_API(_call) EXAMPLE_WAIT_API_CHECK(_call, scan_sem, portMAX_DELAY, scan_op_status)
 
-/* Cached peer address. Bluedroid's pairing and disconnect APIs key off
- * bd_addr rather than conn_handle, so we stash the addr at conn_create
- * time and reuse it in pairing_start / security_failed_recover. */
-static esp_bd_addr_t peer_bda;
-
 static esp_ble_ext_scan_params_t ext_scan_params = {
     .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
     .filter_policy = BLE_SCAN_FILTER_ALLOW_ALL,
@@ -138,7 +133,10 @@ int conn_create(uint8_t addr_type, const uint8_t addr[6])
     esp_gatt_if_t gattc_if;
     esp_err_t err;
 
-    memcpy(peer_bda, addr, sizeof(peer_bda));
+    esp_bd_addr_t peer_bda;
+
+    /* Local copy: the Bluedroid APIs below take a non-const esp_bd_addr_t. */
+    example_addr_le_to_host(peer_bda, addr);
 
     err = esp_ble_gap_prefer_ext_connect_params_set(
               peer_bda, ESP_BLE_GAP_PHY_1M_PREF_MASK, &conn_params, NULL, NULL);
@@ -165,7 +163,15 @@ int conn_create(uint8_t addr_type, const uint8_t addr[6])
 
 int pairing_start(uint16_t conn_handle)
 {
-    (void)conn_handle;
+    const uint8_t *addr = set_member_addr(conn_handle);
+    esp_bd_addr_t peer_bda;
+
+    if (addr == NULL) {
+        ESP_LOGE(TAG, "No address for handle %u; not starting security", conn_handle);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    example_addr_le_to_host(peer_bda, addr);
     return esp_ble_set_encryption(peer_bda, ESP_BLE_SEC_ENCRYPT_NO_MITM);
 }
 
@@ -181,13 +187,22 @@ int exchange_mtu(uint16_t conn_handle)
 
 void security_failed_recover(uint16_t conn_handle, uint8_t status)
 {
-    (void)conn_handle;
+    const uint8_t *addr = set_member_addr(conn_handle);
+    esp_bd_addr_t peer_bda;
+
+    if (addr == NULL) {
+        ESP_LOGE(TAG, "Security change failed on handle %u, status %u; member already gone",
+                 conn_handle, status);
+        return;
+    }
 
     /* Asymmetric bond state: we still hold an LTK for this peer but it
      * cleared its side, so encrypt-with-cached-key times out. Drop the bond
      * and tear down the link; the next reconnect runs fresh pairing. */
-    ESP_LOGE(TAG, "Security change failed, status %u, clearing local bond and reconnecting", status);
+    ESP_LOGE(TAG, "Security change failed on handle %u, status %u, clearing local bond and reconnecting",
+             conn_handle, status);
 
+    example_addr_le_to_host(peer_bda, addr);
     esp_ble_remove_bond_device(peer_bda);
     esp_ble_gap_disconnect(peer_bda);
 }

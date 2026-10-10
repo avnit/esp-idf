@@ -5,13 +5,11 @@
  */
 
 /*
- * RISC-V trace encoder HAL: register-sequencing layer used by the
- * `esp_riscv_trace` driver. It sits on top of the target-specific LL
- * (hal/riscv_trace_ll.h), which performs the raw register accesses.
+ * RISC-V trace encoder HAL. Register sequencing layer used by the
+ * esp_riscv_trace driver.
  *
- * These interfaces are internal to ESP-IDF and subject to change. The HAL
- * performs no locking: callers that use it directly are responsible for
- * serializing concurrent access to the same trace encoder instance.
+ * Internal to ESP-IDF and subject to change. The HAL performs no locking.
+ * Callers must serialize concurrent access to the same encoder instance.
  */
 
 #include <stddef.h>
@@ -156,6 +154,32 @@ void riscv_trace_hal_prepare_capture(riscv_trace_hal_context_t *ctx)
     riscv_trace_ll_clear_intr(ctx->dev, TRACE_FIFO_OVERFLOW_INTR_RAW | TRACE_MEM_FULL_INTR_RAW);
 }
 
+bool riscv_trace_hal_get_mem_loop(riscv_trace_hal_context_t *ctx)
+{
+    HAL_ASSERT(ctx != NULL);
+    return riscv_trace_ll_get_mem_loop(ctx->dev);
+}
+
+#if SOC_RISCV_TRACE_HAS_CONFIG_REG
+bool riscv_trace_hal_get_full_address(riscv_trace_hal_context_t *ctx)
+{
+    HAL_ASSERT(ctx != NULL);
+    return riscv_trace_ll_get_full_address(ctx->dev);
+}
+#endif
+
+uint32_t riscv_trace_hal_get_resync_mode(riscv_trace_hal_context_t *ctx)
+{
+    HAL_ASSERT(ctx != NULL);
+    return riscv_trace_ll_get_resync_mode(ctx->dev);
+}
+
+uint32_t riscv_trace_hal_get_resync_threshold(riscv_trace_hal_context_t *ctx)
+{
+    HAL_ASSERT(ctx != NULL);
+    return riscv_trace_ll_get_resync_threshold(ctx->dev);
+}
+
 #if SOC_RISCV_TRACE_FILTER_SUPPORTED
 void riscv_trace_hal_set_filter(riscv_trace_hal_context_t *ctx, const riscv_trace_hal_filter_config_t *config)
 {
@@ -163,7 +187,7 @@ void riscv_trace_hal_set_filter(riscv_trace_hal_context_t *ctx, const riscv_trac
 
     riscv_trace_ll_set_filter_control(ctx->dev, config->match_comparators, config->match_privilege,
                                       config->match_ecause, config->match_interrupt);
-    riscv_trace_ll_set_filter_match_control(ctx->dev, config->privilege_machine,
+    riscv_trace_ll_set_filter_match_control(ctx->dev, config->privilege,
                                             config->interrupt_itype2, config->ecause);
 
     riscv_trace_ll_set_p_comparator(ctx->dev, config->primary.input, config->primary.function,

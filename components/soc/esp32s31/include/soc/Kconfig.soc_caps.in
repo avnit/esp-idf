@@ -231,6 +231,10 @@ config SOC_PMU_SUPPORTED
     bool
     default y
 
+config SOC_PMU_PVT_SUPPORTED
+    bool
+    default y
+
 config SOC_RTC_TIMER_SUPPORTED
     bool
     default y
@@ -359,6 +363,10 @@ config SOC_SPI_EXTERNAL_NOR_FLASH_SUPPORTED
     bool
     default y
 
+config SOC_RISCV_TRACE_SUPPORTED
+    bool
+    default y
+
 config SOC_EMAC_SUPPORT_1000M
     bool
     default y
@@ -479,6 +487,22 @@ config SOC_ADC_SHARED_POWER
     bool
     default y
 
+config SOC_DAC_CHAN_NUM
+    int
+    default 2
+
+config SOC_DAC_HS_RESOLUTION
+    int
+    default 10
+
+config SOC_DAC_RESOLUTION
+    int
+    default 12
+
+config SOC_DAC_SUPPORT_BUFFER_CFG
+    bool
+    default y
+
 config SOC_CACHE_WRITEBACK_SUPPORTED
     bool
     default y
@@ -486,6 +510,14 @@ config SOC_CACHE_WRITEBACK_SUPPORTED
 config SOC_CACHE_FREEZE_SUPPORTED
     bool
     default y
+
+config SOC_CACHE_CNT_SUPPORTED
+    bool
+    default y
+
+config SOC_CACHE_CNT_UNITS_NUM
+    int
+    default 4
 
 config SOC_CPU_CORES_NUM
     int
@@ -590,10 +622,6 @@ config SOC_GDMA_SUPPORT_ETM
 config SOC_GDMA_SUPPORT_SLEEP_RETENTION
     bool
     default y
-
-config SOC_GDMA_EXT_MEM_ENC_ALIGNMENT
-    int
-    default 16
 
 config SOC_MODEM_SUPPORT_ETM
     bool
@@ -891,6 +919,10 @@ config SOC_SPI_SUPPORT_OCT
     bool
     default y
 
+config SOC_SPI_SUPPORT_DDR_CLOCK
+    bool
+    default y
+
 config SOC_SPIRAM_XIP_SUPPORTED
     bool
     default y
@@ -1087,6 +1119,10 @@ config SOC_SHA_SUPPORT_SHA512_T
     bool
     default y
 
+config SOC_SHA_SUPPORT_SM3
+    bool
+    default y
+
 config SOC_MPI_MEM_BLOCKS_NUM
     int
     default 4
@@ -1124,6 +1160,10 @@ config SOC_ECDSA_SUPPORT_CURVE_P384
     default y
 
 config SOC_ECDSA_SUPPORT_CURVE_SPECIFIC_KEY_PURPOSES
+    bool
+    default y
+
+config SOC_ECDSA_SUPPORT_SOFTWARE_KEY
     bool
     default y
 
@@ -1216,6 +1256,10 @@ config SOC_KEY_MANAGER_DS_KEY_DEPLOY
     default y
 
 config SOC_LCDCAM_CAM_SUPPORT_RGB_YUV_CONV
+    bool
+    default y
+
+config SOC_LCDCAM_LCD_SUPPORT_SLEEP_RETENTION
     bool
     default y
 
@@ -1360,6 +1404,10 @@ config SOC_MODEM_CLOCK_SOC_PLL_SOURCE_CG_SUPPORTED
     default y
 
 config SOC_MODEM_CLOCK_WIFI_BB_80X1_AS_APB
+    bool
+    default y
+
+config SOC_RNG_CLOCK_IS_INDEPENDENT
     bool
     default y
 
@@ -1571,6 +1619,10 @@ config SOC_PM_SUPPORT_PMU_MODEM_STATE
     bool
     default y
 
+config SOC_PM_REGDMA_MODEM_LINK_PROTECT
+    bool
+    default y
+
 config SOC_PM_MODEM_STATE_USE_XTAL
     bool
     default y
@@ -1578,10 +1630,6 @@ config SOC_PM_MODEM_STATE_USE_XTAL
 config SOC_PM_PMU_MIN_SLP_SLOW_CLK_CYCLE_FIXED
     bool
     default y
-
-config SOC_PM_RETENTION_MODULE_NUM
-    int
-    default 64
 
 config SOC_PM_SUPPORT_BUS_CLK_AUTO_GATE
     bool
@@ -1699,6 +1747,10 @@ config SOC_BT_CLASSIC_SUPPORTED
     bool
     default y
 
+config SOC_ORCA_BREDR_CONTROLLER
+    bool
+    default y
+
 config SOC_BLE_SUPPORTED
     bool
     default y
@@ -1752,6 +1804,10 @@ config SOC_BLE_SUBRATE_SUPPORTED
     default y
 
 config SOC_BLE_PERIODIC_ADV_WITH_RESPONSE
+    bool
+    default y
+
+config SOC_BT_H2C_ENC_KEY_CTRL_ENH_VSC_SUPPORTED
     bool
     default y
 
@@ -1852,5 +1908,33 @@ config SOC_TEMPERATURE_SENSOR_SUPPORT_SLEEP_RETENTION
     default y
 
 config SOC_DEBUG_HAVE_OCD_STUB_BINS
+    bool
+    default y
+
+config SOC_RISCV_TRACE_PACKET_FORMAT_VER
+    int
+    default 200
+
+config SOC_RISCV_TRACE_HAS_CONFIG_REG
+    bool
+    default y
+
+config SOC_RISCV_TRACE_AHB_CONFIGURABLE
+    bool
+    default y
+
+config SOC_RISCV_TRACE_FILTER_SUPPORTED
+    bool
+    default y
+
+config SOC_RISCV_TRACE_PRIV_WIDTH
+    int
+    default 2
+
+config SOC_RISCV_TRACE_ECAUSE_WIDTH
+    int
+    default 6
+
+config SOC_RISCV_TRACE_MEM_SUPPORT_PSRAM
     bool
     default y

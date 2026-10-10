@@ -15,7 +15,7 @@ FreeRTOS (IDF)
 
 原始 FreeRTOS（下文称 Vanilla FreeRTOS）是一款小巧高效的实时操作系统，适用于许多单核 MCU 和 SoC。但为了支持双核 ESP 芯片，如 ESP32、ESP32-S3、ESP32-P4，ESP-IDF 特别提供了支持双核对称多处理 (SMP) 的 FreeRTOS 实现（下文称 IDF FreeRTOS）。
 
-IDF FreeRTOS 源代码基于 Vanilla FreeRTOS v10.5.1，但内核行为和 API 都有重大修改，以支持双核 SMP。不过用户也可以启用 :ref:`CONFIG_FREERTOS_UNICORE` 选项，将 IDF FreeRTOS 配置为支持单核，详情请参阅 :ref:`freertos-idf-single-core`。
+IDF FreeRTOS 源代码基于 Vanilla FreeRTOS v10.5.1，但内核行为和 API 都有重大修改，以支持双核 SMP。不过用户也可以启用 :menuitem:`CONFIG_FREERTOS_UNICORE` 选项，将 IDF FreeRTOS 配置为支持单核，详情请参阅 :ref:`freertos-idf-single-core`。
 
 .. note::
 
@@ -47,7 +47,7 @@ IDF FreeRTOS 源代码基于 Vanilla FreeRTOS v10.5.1，但内核行为和 API �
 ESP 芯片上的 SMP
 ^^^^^^^^^^^^^^^^
 
-ESP32、ESP32-S3、ESP32-P4 和 ESP32-H4 等 ESP 芯片是双核 SMP SoC，具有以下硬件特性以支持 SMP：
+具有双高性能核的 ESP 芯片具备以下硬件特性以支持 SMP：
 
 - 具有两个完全相同的核，分别称为核 0 和核 1。代码段无论在哪个核上运行，都有相同的执行效果。
 - 具有对称内存（除了少数例外情况）。
@@ -438,7 +438,7 @@ IDF FreeRTOS 中，特定核进入和退出临界区的过程如下：
 
         .. note::
 
-            如需在 ISR 例程中使用 ``float`` 类型，请参考配置选项:ref:`CONFIG_FREERTOS_FPU_IN_ISR`。
+            如需在 ISR 例程中使用 ``float`` 类型，请参考配置选项:menuitem:`CONFIG_FREERTOS_FPU_IN_ISR`。
 
     .. note::
 
@@ -459,6 +459,14 @@ IDF FreeRTOS 中，特定核进入和退出临界区的过程如下：
             在 ESP32-S31 上，PIE 协处理器 **仅在核心 1 上可用**。如果任务在核心 0 上运行时执行了 PIE 指令，IDF FreeRTOS 会将该任务迁移至核心 1 并将其固定。此迁移会 **覆盖** 任何现有的核心亲和性设置。
 
             由于存在这种迁移机制，任务 **不得** 在临界区或 ISR 例程中使用 PIE 协处理器，否则将导致运行时中止。
+
+    意外使用 PIE（例如深层调用栈间接调用了 PIE 辅助函数）可能会把本不该运行在 PIE 核心上的任务固定到该核心。可启用 :menuitem:`CONFIG_FREERTOS_DEBUG_TASK_PIE_BLACKLIST`，并对不得执行 PIE 的任务调用 :cpp:func:`vTaskSetPieBlacklisted`。该标志仅在协处理器陷入时被检查。PIE 所有者持续运行期间，PIE 保持使能，因此任务被切换出去之前执行的指令不会陷入。任务被切换出去后，PIE 会被关闭，下一次 PIE 指令会陷入。即使该任务仍是协处理器所有者，被加入黑名单的任务也会在这次陷入时中止，而不是被静默固定到 PIE 核心。
+
+    .. code-block:: c
+
+        #if CONFIG_FREERTOS_DEBUG_TASK_PIE_BLACKLIST
+            vTaskSetPieBlacklisted(my_task, pdTRUE);
+        #endif
 
 
 .. only:: SOC_CPU_HAS_HWLOOP
@@ -487,9 +495,9 @@ IDF FreeRTOS 中，特定核进入和退出临界区的过程如下：
 单核模式
 ^^^^^^^^
 
-尽管 IDF FreeRTOS 是为双核 SMP 专门设计的，但也可通过启用 :ref:`CONFIG_FREERTOS_UNICORE` 选项，将 IDF FreeRTOS 配置为支持单核。
+尽管 IDF FreeRTOS 是为双核 SMP 专门设计的，但也可通过启用 :menuitem:`CONFIG_FREERTOS_UNICORE` 选项，将 IDF FreeRTOS 配置为支持单核。
 
-对于 ESP32-S2 和 ESP32-C3 等单核芯片，:ref:`CONFIG_FREERTOS_UNICORE` 选项始终启用。对于 ESP32 和 ESP32-S3 等多核芯片也可以设置 :ref:`CONFIG_FREERTOS_UNICORE`，对于多核目标（如 ESP32 和 ESP32-S3），也可以设置 :ref:`CONFIG_FREERTOS_UNICORE`，但启用该选项后应用仅在核 0 上运行。
+对于 ESP32-S2 和 ESP32-C3 等单核芯片，:menuitem:`CONFIG_FREERTOS_UNICORE` 选项始终启用。对于 ESP32 和 ESP32-S3 等多核芯片也可以设置 :menuitem:`CONFIG_FREERTOS_UNICORE`，对于多核目标（如 ESP32 和 ESP32-S3），也可以设置 :menuitem:`CONFIG_FREERTOS_UNICORE`，但启用该选项后应用仅在核 0 上运行。
 
 在单核模式下，IDF FreeRTOS 与 Vanilla FreeRTOS 完全相同，因此无需考虑前文提到的对内核行为的 SMP 更改。因此，在单核模式下构建 IDF FreeRTOS 具有以下特点：
 

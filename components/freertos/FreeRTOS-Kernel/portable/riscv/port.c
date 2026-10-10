@@ -55,6 +55,9 @@
 #include "esp_log.h"
 #include "FreeRTOS.h"       /* This pulls in portmacro.h */
 #include "task.h"
+#if CONFIG_FREERTOS_DEBUG_TASK_PIE_BLACKLIST
+#include "freertos/idf_additions.h"
+#endif
 #include "portmacro.h"
 #include "port_systick.h"
 #include "esp_memory_utils.h"
@@ -542,13 +545,17 @@ BaseType_t __attribute__((optimize("-O3"))) xPortEnterCriticalTimeout(portMUX_TY
      * saved level can be restored on the last call to exit the critical.
      */
     BaseType_t xOldInterruptLevel = portSET_INTERRUPT_MASK_FROM_ISR();
-    if (!spinlock_acquire(mux, timeout)) {
+    /* Interrupts are masked, so the core id is stable. Read it once and reuse it for
+     * both the spinlock owner id and the per-core critical nesting state. Interrupts
+     * stay masked for the whole critical section (to the same level the spinlock would
+     * use), so the spinlock does not need to disable them again. */
+    BaseType_t coreID = xPortGetCoreID();
+    if (!spinlock_acquire_impl(mux, timeout, spinlock_owner_id_for_core(coreID))) {
         //Timed out attempting to get spinlock. Restore previous interrupt level and return
         portCLEAR_INTERRUPT_MASK_FROM_ISR(xOldInterruptLevel);
         return pdFAIL;
     }
     //Spinlock acquired. Increment the critical nesting count.
-    BaseType_t coreID = xPortGetCoreID();
     BaseType_t newNesting = port_uxCriticalNesting[coreID] + 1;
     port_uxCriticalNesting[coreID] = newNesting;
     //If this is the first entry to a critical section. Save the old interrupt level.
@@ -569,8 +576,11 @@ void __attribute__((optimize("-O3"))) vPortExitCriticalMultiCore(portMUX_TYPE *m
      * to re-enable interrupts if this is the last call to exit the critical. We
      * can use the nesting count to determine whether this is the last exit call.
      */
-    spinlock_release(mux);
+    /* Interrupts remain disabled for the whole critical section, so the core id is
+     * stable and the spinlock does not need to mask them again. Read the core id
+     * once and reuse it for both the release owner id and the per-core nesting state. */
     BaseType_t coreID = xPortGetCoreID();
+    spinlock_release_impl(mux, spinlock_owner_id_for_core(coreID));
     BaseType_t nesting = port_uxCriticalNesting[coreID];
 
     /* Critical section nesting count must never be negative */
@@ -785,6 +795,12 @@ void vPortTCBPreDeleteHook( void *pxTCB )
         vPortTLSPointersDelCb( pxTCB );
     #endif /* CONFIG_FREERTOS_TLSP_DELETION_CALLBACKS */
 
+    #if ( CONFIG_FREERTOS_DEBUG_TASK_PIE_BLACKLIST )
+        if (pxTCB != NULL) {
+            vTaskSetPieBlacklisted((TaskHandle_t)pxTCB, pdFALSE);
+        }
+    #endif /* CONFIG_FREERTOS_DEBUG_TASK_PIE_BLACKLIST */
+
     #if ( SOC_CPU_COPROC_NUM > 0 )
         /* Cleanup coproc save area */
         vPortCleanUpCoprocArea( pxTCB );
@@ -917,6 +933,23 @@ void vPortCoprocUsedInISR(void* frame)
     xt_unhandled_exception(frame);
 }
 
+#if CONFIG_FREERTOS_DEBUG_TASK_PIE_BLACKLIST
+/**
+ * @brief Abort if the given task is blacklisted from using the PIE coprocessor.
+ *
+ * Called from the PIE illegal-instruction path, so this must not trigger another
+ * exception via abort().
+ */
+void vPortAbortIfTaskPieBlacklisted(StaticTask_t *task, void *frame)
+{
+    if (task != NULL && xTaskGetPieBlacklisted((TaskHandle_t)task) != pdFALSE) {
+        g_panic_abort = true;
+        g_panic_abort_details = (char *) "ERROR: Blacklisted task executed a PIE instruction!\n";
+        xt_unhandled_exception(frame);
+    }
+}
+#endif /* CONFIG_FREERTOS_DEBUG_TASK_PIE_BLACKLIST */
+
 #if CONFIG_IDF_TARGET_ESP32S31
 /* On the ESP32-S31, the PIE is only available on core 1, so we need to perform a few checks when core 0 uses a PIE instruction.
  * the functions here will help us with that. */
@@ -932,6 +965,9 @@ void vPortCoprocUsedInISR(void* frame)
  */
 void* vPortTaskUsedPIEOnCPU0(StaticTask_t* task, void* frame)
 {
+#if CONFIG_FREERTOS_DEBUG_TASK_PIE_BLACKLIST
+    vPortAbortIfTaskPieBlacklisted(task, frame);
+#endif
 #if CONFIG_FREERTOS_UNICORE
     g_panic_abort = true;
     g_panic_abort_details = (char *) "ERROR: PIE coprocessor is not supported in unicore configuration!\n";

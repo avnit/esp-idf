@@ -131,8 +131,7 @@ void BTA_DmSetDeviceName(const char *p_name, tBT_DEVICE_TYPE name_type)
     if ((p_msg = (tBTA_DM_API_SET_NAME *) osi_malloc(sizeof(tBTA_DM_API_SET_NAME))) != NULL) {
         p_msg->hdr.event = BTA_DM_API_SET_NAME_EVT;
         /* truncate the name if needed */
-        BCM_STRNCPY_S((char *)p_msg->name, p_name, BD_NAME_LEN);
-        p_msg->name[BD_NAME_LEN] = '\0';
+        BCM_STRLCPY_S((char *)p_msg->name, p_name, BD_NAME_LEN + 1);
         p_msg->name_type = name_type;
 
         bta_sys_sendmsg(p_msg);
@@ -399,7 +398,6 @@ void BTA_DmSetAclPktTypes(BD_ADDR remote_addr, UINT16 pkt_types, tBTM_CMPL_CB *p
 ** Returns          void
 **
 *******************************************************************************/
-#if (ENC_KEY_SIZE_CTRL_MODE != ENC_KEY_SIZE_CTRL_MODE_NONE)
 void BTA_DmSetMinEncKeySize(UINT8 key_size, tBTM_CMPL_CB *p_cb)
 {
     tBTA_DM_API_SET_MIN_ENC_KEY_SIZE *p_msg;
@@ -412,7 +410,6 @@ void BTA_DmSetMinEncKeySize(UINT8 key_size, tBTM_CMPL_CB *p_cb)
         bta_sys_sendmsg(p_msg);
     }
 }
-#endif
 #endif /// CLASSIC_BT_INCLUDED == TRUE
 
 #if (SDP_INCLUDED == TRUE)

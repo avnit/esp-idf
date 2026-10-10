@@ -157,7 +157,7 @@ static void gattc_db_del(struct gattc_db *adb)
     struct gattc_db_svc *asvc;
     sys_snode_t *node;
 
-    assert(adb);
+    BT_LE_ASSERT(adb);
 
     while ((node = sys_slist_get(&adb->svc_list)) != NULL) {
         asvc = SYS_SLIST_CONTAINER(node, asvc, node);
@@ -182,7 +182,7 @@ static void gattc_db_svc_insert(struct gattc_db *adb, const struct ble_gatt_svc 
     struct gattc_db_svc *asvc;
 
     asvc = bt_le_ext_calloc(1, sizeof(*asvc));
-    assert(asvc);
+    BT_LE_ASSERT(asvc);
 
     memcpy(&asvc->svc, svc, sizeof(asvc->svc));
     sys_slist_init(&asvc->inc_svc_list);
@@ -198,7 +198,7 @@ static void gattc_db_inc_svc_insert(struct gattc_db_svc *asvc, const struct ble_
     struct gattc_db_inc_svc *ainc_svc;
 
     ainc_svc = bt_le_ext_calloc(1, sizeof(*ainc_svc));
-    assert(ainc_svc);
+    BT_LE_ASSERT(ainc_svc);
 
     memcpy(&ainc_svc->svc, inc_svc, sizeof(ainc_svc->svc));
     sys_slist_init(&ainc_svc->chrc_list);
@@ -220,7 +220,7 @@ static void gattc_db_chrc_insert(sys_slist_t *chrc_list, const struct ble_gatt_c
     struct gattc_db_chrc *achrc;
 
     achrc = bt_le_ext_calloc(1, sizeof(*achrc));
-    assert(achrc);
+    BT_LE_ASSERT(achrc);
 
     memcpy(&achrc->chrc, chrc, sizeof(achrc->chrc));
 
@@ -230,26 +230,33 @@ static void gattc_db_chrc_insert(sys_slist_t *chrc_list, const struct ble_gatt_c
 }
 
 static void gattc_db_dsc_cccd_store(sys_slist_t *chrc_list,
-                                    uint16_t chr_val_handle,
                                     const struct ble_gatt_dsc *dsc)
 {
     struct gattc_db_chrc *achrc;
+    struct gattc_db_chrc *owner = NULL;
 
-    /* LOG_DBG("[N]GattcDbDscCccdStore[%u]", chr_val_handle); */
-
+    /* chrc_list is handle-ordered; the CCCD belongs to the last chrc whose
+     * value handle is below the descriptor. NimBLE's service-range
+     * disc_all_dscs reports one chr_val_handle for all descriptors, so locate
+     * the owner by descriptor handle instead. */
     SYS_SLIST_FOR_EACH_CONTAINER(chrc_list, achrc, node) {
-        if (achrc->chrc.val_handle == dsc->handle - 1) {
-            if (achrc->cccd.handle) {
-                LOG_WRN("[N]GattcDbCccAlreadyUpd[%u][%u]", chr_val_handle, achrc->cccd.handle);
-                return;
-            }
-
-            /* LOG_DBG("[N]GattcDbCccUpd[%u][%u]", achrc->chrc.val_handle, dsc->handle); */
-
-            memcpy(&achrc->cccd, dsc, sizeof(achrc->cccd));
-            return;
+        if (achrc->chrc.val_handle < dsc->handle) {
+            owner = achrc;
+        } else {
+            break;
         }
     }
+
+    if (owner == NULL) {
+        return;
+    }
+
+    if (owner->cccd.handle) {
+        LOG_WRN("[N]GattcDbCccAlreadyUpd[%u][%u]", owner->chrc.val_handle, owner->cccd.handle);
+        return;
+    }
+
+    memcpy(&owner->cccd, dsc, sizeof(owner->cccd));
 }
 
 static struct gattc_db_svc *gattc_db_disc_find(struct gattc_db *adb)
@@ -582,12 +589,12 @@ static int gattc_db_disc_all_svcs_cb_safe(uint16_t conn_handle,
     bt_le_host_lock();
 
     adb = arg;
-    assert(adb);
-    assert(adb->conn_handle == conn_handle);
+    BT_LE_ASSERT(adb);
+    BT_LE_ASSERT(adb->conn_handle == conn_handle);
 
     switch (error->status) {
     case 0:
-        assert(svc);
+        BT_LE_ASSERT(svc);
 
         LOG_DBG("[N]GattcDbDiscAllSvcs[0x%04x][%u][%u]",
                 svc->uuid.u16.value,
@@ -628,7 +635,7 @@ static int gattc_db_find_inc_svcs_cb_safe(uint16_t conn_handle,
     int rc = 0;
 
     asvc = arg;
-    assert(asvc);
+    BT_LE_ASSERT(asvc);
 
     /* LOG_DBG("[N]GattcDbFindIncSvcsCb[%u][%04x]", conn_handle, error->status); */
 
@@ -643,7 +650,7 @@ static int gattc_db_find_inc_svcs_cb_safe(uint16_t conn_handle,
 
     switch (error->status) {
     case 0:
-        assert(svc);
+        BT_LE_ASSERT(svc);
 
         LOG_DBG("[N]GattcDbFindIncSvcs[0x%04x][%u][%u]",
                 svc->uuid.u16.value,
@@ -716,7 +723,7 @@ static int gattc_db_disc_all_inc_chrs_cb_safe(uint16_t conn_handle,
     int rc = 0;
 
     ainc_svc = arg;
-    assert(ainc_svc);
+    BT_LE_ASSERT(ainc_svc);
 
     /* LOG_DBG("[N]GattcDbDiscAllIncChrsCb[%u][%04x]", conn_handle, error->status); */
 
@@ -731,7 +738,7 @@ static int gattc_db_disc_all_inc_chrs_cb_safe(uint16_t conn_handle,
 
     switch (error->status) {
     case 0:
-        assert(chrc);
+        BT_LE_ASSERT(chrc);
 
         LOG_DBG("[N]GattcDbDiscAllIncChrs[%u][%u]", chrc->def_handle, chrc->val_handle);
 
@@ -774,7 +781,7 @@ static int gattc_db_disc_all_chrs_cb_safe(uint16_t conn_handle,
     int rc = 0;
 
     asvc = arg;
-    assert(asvc);
+    BT_LE_ASSERT(asvc);
 
     /* LOG_DBG("[N]GattcDbDiscAllChrsCb[%u][%04x]", conn_handle, error->status); */
 
@@ -789,7 +796,7 @@ static int gattc_db_disc_all_chrs_cb_safe(uint16_t conn_handle,
 
     switch (error->status) {
     case 0:
-        assert(chrc);
+        BT_LE_ASSERT(chrc);
 
         LOG_DBG("[N]GattcDbDiscAllChrs[%u][%u]", chrc->def_handle, chrc->val_handle);
 
@@ -833,7 +840,7 @@ static int gattc_db_disc_all_inc_dscs_cb_safe(uint16_t conn_handle,
     int rc = 0;
 
     ainc_svc = arg;
-    assert(ainc_svc);
+    BT_LE_ASSERT(ainc_svc);
 
     LOG_DBG("[N]GattcDbDiscAllIncDscsCb[%u][%04x][%u]",
             conn_handle, error->status, chr_val_handle);
@@ -849,13 +856,13 @@ static int gattc_db_disc_all_inc_dscs_cb_safe(uint16_t conn_handle,
 
     switch (error->status) {
     case 0:
-        assert(dsc);
+        BT_LE_ASSERT(dsc);
 
         if (dsc->uuid.u.type == BLE_UUID_TYPE_16 &&
                 dsc->uuid.u16.value == BT_UUID_GATT_CCC_VAL) {
             LOG_DBG("[N]GattcDbDiscAllIncDscs[%u][%u]", chr_val_handle, dsc->handle);
 
-            gattc_db_dsc_cccd_store(&ainc_svc->chrc_list, chr_val_handle, dsc);
+            gattc_db_dsc_cccd_store(&ainc_svc->chrc_list, dsc);
         }
         break;
 
@@ -896,7 +903,7 @@ static int gattc_db_disc_all_dscs_cb_safe(uint16_t conn_handle,
     int rc = 0;
 
     asvc = arg;
-    assert(asvc);
+    BT_LE_ASSERT(asvc);
 
     /* LOG_DBG("[N]GattcDbDiscAllDscsCb[%u][%04x][%u]", */
     /*         conn_handle, error->status, chr_val_handle); */
@@ -912,13 +919,13 @@ static int gattc_db_disc_all_dscs_cb_safe(uint16_t conn_handle,
 
     switch (error->status) {
     case 0:
-        assert(dsc);
+        BT_LE_ASSERT(dsc);
 
         if (dsc->uuid.u.type == BLE_UUID_TYPE_16 &&
                 dsc->uuid.u16.value == BT_UUID_GATT_CCC_VAL) {
             LOG_DBG("[N]GattcDbDiscAllDscs[%u]", dsc->handle);
 
-            gattc_db_dsc_cccd_store(&asvc->chrc_list, chr_val_handle, dsc);
+            gattc_db_dsc_cccd_store(&asvc->chrc_list, dsc);
         }
         break;
 
@@ -958,7 +965,7 @@ static int gattc_db_enable_notify_cb_safe(uint16_t conn_handle,
     int rc = 0;
 
     achrc = arg;
-    assert(achrc);
+    BT_LE_ASSERT(achrc);
 
     /* LOG_DBG("[N]GattcDbEnableNtfCb[%u][%04x]", conn_handle, error->status); */
 
@@ -973,7 +980,7 @@ static int gattc_db_enable_notify_cb_safe(uint16_t conn_handle,
 
     switch (error->status) {
     case 0:
-        assert(attr);
+        BT_LE_ASSERT(attr);
         LOG_DBG("[N]GattcDbEnableNotify[%u]", attr->handle);
         break;
 
@@ -1135,13 +1142,18 @@ static uint8_t gattc_disc_chr_each(struct bt_conn *conn,
         chrc_uuid.val = achrc->chrc.uuid.u16.value;
         break;
     default:
-        return BT_GATT_ITER_STOP;
+        /* Skip unsupported UUID types (e.g. 128-bit custom) instead of aborting
+         * the whole discovery; LE Audio only uses 16-bit characteristics. */
+        LOG_WRN("[N]GattcDbChrcSkipUuid[%u][%u][%u]",
+                conn->handle, achrc->chrc.uuid.u.type, achrc->chrc.val_handle);
+        return BT_GATT_ITER_CONTINUE;
     }
 
     chrc.uuid = &chrc_uuid.uuid;
     chrc.value_handle = achrc->chrc.val_handle;
     chrc.properties = achrc->chrc.properties;
 
+    attr.uuid = BT_UUID_GATT_CHRC;  /* declaration attr UUID */
     attr.user_data = &chrc;
     attr.handle = achrc->chrc.def_handle;
 
@@ -1247,7 +1259,7 @@ void handle_gattc_db_disc_event_safe(struct bt_le_gattc_discover_event *event)
         goto end;
     }
 
-    assert(event->params);
+    BT_LE_ASSERT(event->params);
 
     switch (event->type) {
     case GATTC_DISC_TYPE_SVC_BY_UUID:
@@ -1273,7 +1285,7 @@ void handle_gattc_db_disc_event_safe(struct bt_le_gattc_discover_event *event)
         break;
 
     default:
-        assert(0);
+        BT_LE_ASSERT(0);
         break;
     }
 
@@ -1344,7 +1356,7 @@ static int handle_gattc_disc_all_dscs(struct bt_conn *conn,
      */
 
     sub_params = params->sub_params;
-    assert(sub_params);
+    BT_LE_ASSERT(sub_params);
 
     LOG_DBG("[N]GattcDbHdlDiscAllDscs[%u][%u]", conn->handle, sub_params->value_handle);
 
@@ -1382,6 +1394,10 @@ static int handle_gattc_disc_all_dscs(struct bt_conn *conn,
 
         SYS_SLIST_FOR_EACH_CONTAINER(&asvc->chrc_list, achrc, node) {
             if (achrc->chrc.val_handle == sub_params->value_handle) {
+                LOG_DBG("[N]GattcDbCccLookup[%u][%u][%u][%u]",
+                        asvc->svc.start_handle, asvc->svc.end_handle,
+                        achrc->chrc.val_handle, achrc->cccd.handle);
+
                 if (achrc->cccd.handle) {
                     attr.handle = achrc->cccd.handle;
                     found = &attr;
@@ -1394,6 +1410,12 @@ static int handle_gattc_disc_all_dscs(struct bt_conn *conn,
     }
 
 end:
+    if (found == NULL && rc == 0) {
+        /* Char missing, or char found with cccd.handle==0 — not success.
+         * Returning 0 here made bt_gatt_subscribe() append a dead node. */
+        rc = -ENODEV;
+    }
+
     params->func(conn, found, params);
 
     return rc;

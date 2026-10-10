@@ -356,6 +356,31 @@ function(__init_project_configuration)
         list(APPEND compile_options "-fstack-protector-all")
     endif()
 
+    # Kernel Address Sanitizer (CONFIG_COMPILER_KASAN): instrument every memory
+    # load and store with a shadow-memory check. The flag goes into the C and C++
+    # options rather than the language-agnostic list because the assembler does
+    # not accept -fsanitize. Low-level components are de-instrumented again in
+    # idf_build_library(), see __kasan_exclude_components().
+    #
+    # A subproject that must never be instrumented (for example the bootloader,
+    # which runs before the sanitizer shadow is initialised) sets the
+    # SET_COMPILER_KASAN build property to NO before idf_project_init(), the
+    # same way it uses SET_COMPILER_LTO and SET_COMPILER_OPTIMIZATION; an unset
+    # property means instrumentation is allowed.
+    idf_build_get_property(set_compiler_kasan SET_COMPILER_KASAN)
+    if(NOT DEFINED set_compiler_kasan OR set_compiler_kasan STREQUAL "")
+        set(set_compiler_kasan YES)
+    endif()
+    if(CONFIG_COMPILER_KASAN AND set_compiler_kasan)
+        list(APPEND c_compile_options "-fsanitize=kernel-address")
+        list(APPEND cxx_compile_options "-fsanitize=kernel-address")
+        if(NOT CONFIG_KASAN_STACK)
+            list(APPEND c_compile_options "--param" "asan-stack=0")
+            list(APPEND cxx_compile_options "--param" "asan-stack=0")
+        endif()
+        list(APPEND link_options "-fsanitize=kernel-address")
+    endif()
+
     if(CONFIG_COMPILER_DUMP_RTL_FILES)
         list(APPEND compile_options "-fdump-rtl-expand")
     endif()
@@ -418,6 +443,14 @@ function(__init_project_configuration)
     endif()
     if(CONFIG_COMPILER_LTO_LINKTIME AND set_compiler_lto)
         list(APPEND link_options "-flto=auto")
+        # LTO generates code at link time, so the -ffunction-sections/-fdata-sections
+        # applied to compile_options doesn't reach it: the LTRANS recompilation takes
+        # its code generation options from the link command line. Without them the
+        # LTO partition is emitted as a single .text/.data, which defeats
+        # -Wl,--gc-sections (it can only drop whole sections) and keeps unreferenced
+        # functions in the image.
+        list(APPEND link_options "-ffunction-sections"
+                                 "-fdata-sections")
     else()
         list(APPEND compile_options "-fno-lto")
     endif()
@@ -487,8 +520,42 @@ function(__init_project_configuration)
         string(TOUPPER ${target_upper} target_upper)
         # Add this symbol as a hint for esp_idf_size to guess the target name
         list(APPEND link_options "-Wl,--defsym=IDF_TARGET_${target_upper}=0")
+        if(CONFIG_COMPILER_USE_LLD)
+            if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+                # The last --ld-path on the link line takes precedence over the
+                # one set in the toolchain file, selecting LLD for the link.
+                # The bare name is looked up in PATH.
+                list(APPEND link_options "--ld-path=ld.lld")
+            else()
+                # GCC has no --ld-path; -fuse-ld=lld makes the driver search
+                # its search paths and PATH for a binary named "ld.lld".
+                list(APPEND link_options "-fuse-ld=lld")
+            endif()
+            # Bare-metal images have no dynamic loader, so PT_GNU_RELRO is
+            # meaningless. LLD enables relro by default and errors out when
+            # relro sections (e.g. TLS .flash.tdata) are not contiguous in the
+            # IDF linker scripts, so disable it.
+            list(APPEND link_options "-Wl,-z,norelro")
+            # Some targets (e.g. esp32s3) use NOLOAD dummy sections that
+            # deliberately overlap other sections' address ranges, because two
+            # memory regions alias the same bus address space. GNU ld skips
+            # NOBITS sections in its overlap check; LLD does not, so disable
+            # the check there.
+            list(APPEND link_options "-Wl,--no-check-sections")
+            set(linker_binary "ld.lld")
+        else()
+            set(linker_binary "${CMAKE_LINKER}")
+        endif()
+        # Report which linker the link will use, with its version banner
+        execute_process(COMMAND ${linker_binary} "-v"
+            OUTPUT_VARIABLE linker_version
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REGEX REPLACE "\n.*" "" linker_version "${linker_version}")
+        message(STATUS "Linker: ${linker_binary} (${linker_version})")
+        unset(linker_version)
         # Check if linker supports --no-warn-rwx-segments
-        execute_process(COMMAND ${CMAKE_LINKER} "--no-warn-rwx-segments" "--version"
+        execute_process(COMMAND ${linker_binary} "--no-warn-rwx-segments" "--version"
             RESULT_VARIABLE result
             OUTPUT_QUIET
             ERROR_QUIET)
@@ -801,6 +868,28 @@ function(idf_build_generate_flasher_args)
                  INPUT "${build_dir}/flasher_args.json.in")
 endfunction()
 
+#[[api
+.. cmakev2:function:: idf_project_add_default_build_component
+
+    .. code-block:: cmake
+
+        idf_project_add_default_build_component(<component>...)
+
+    *component[in]*
+
+        Component name to include in the executable created by
+        :cmakev2:ref:`idf_project_default`.
+
+    Add components to the default project executable. This is intended for
+    components that need to be built based on sdkconfig alone, for example to
+    provide linker-section registrations, without making another component
+    depend on them. This is e.g. the case with coredump which is simply enabled
+    based on CONFIG_ESP_COREDUMP_ENABLE option, but no other components depend it.
+#]]
+function(idf_project_add_default_build_component)
+    idf_build_set_property(PROJECT_DEFAULT_EXTRA_COMPONENTS "${ARGN}" APPEND)
+endfunction()
+
 #[[
 .. cmakev2:macro:: __project_default
 
@@ -822,6 +911,11 @@ function(__project_default)
         set(root_components ${shim_components})
     else()
         set(root_components main)
+        idf_build_get_property(extra_default_components PROJECT_DEFAULT_EXTRA_COMPONENTS)
+        if(extra_default_components)
+            list(APPEND root_components ${extra_default_components})
+            list(REMOVE_DUPLICATES root_components)
+        endif()
     endif()
 
     idf_build_executable("${executable}"
@@ -837,29 +931,12 @@ function(__project_default)
     set(project_elf "${executable}" PARENT_SCOPE)
 
     # Provide Build system v1-compatible build properties so that existing
-    # test apps and project CMakeLists.txt files that query EXECUTABLE or
-    # BUILD_COMPONENTS continue to work when built through the shim.
+    # test apps and project CMakeLists.txt files that query EXECUTABLE
+    # continue to work when built through the shim.
     idf_build_get_property(v1_compat __V1_COMPAT_SHIM)
     if(v1_compat)
         idf_build_set_property(EXECUTABLE "${executable}")
         idf_build_set_property(EXECUTABLE_NAME "${executable}")
-
-        # BUILD_COMPONENTS: in Build system v1 this is the set of components
-        # actually processed during the build (COMPONENTS + their transitive
-        # REQUIRES within the restricted scope). Use LIBRARY_COMPONENTS_LINKED
-        # from the Build system v2 library target which reflects the actual
-        # list of components linked, plus the architecture component which
-        # Build system v1 always includes but Build system v2 does not track
-        # as a linked library.
-        get_target_property(library ${executable} LIBRARY_INTERFACE)
-        if(library)
-            idf_library_get_property(linked_components "${library}" LIBRARY_COMPONENTS_LINKED)
-            idf_build_get_property(target_arch IDF_TARGET_ARCH)
-            if(target_arch AND NOT target_arch IN_LIST linked_components)
-                list(APPEND linked_components ${target_arch})
-            endif()
-            idf_build_set_property(BUILD_COMPONENTS "${linked_components}")
-        endif()
     endif()
 
     if(CONFIG_APP_BUILD_GENERATE_BINARIES AND TARGET idf::esptool_py)

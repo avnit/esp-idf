@@ -138,6 +138,55 @@ void pau_regdma_trigger_extra_link_restore(void);
 bool pau_regdma_enable_aon_link_entry(bool enable);
 #endif
 
+#if SOC_PM_REGDMA_MODEM_LINK_PROTECT
+/**
+ * @brief Callback function type for modem link protect.
+ *
+ */
+typedef void (* pau_regdma_modem_link_protect_cb_t)(bool protect);
+
+/**
+ * @brief Register the modem link trigger hook callback function
+ * @param cb the callback function
+ */
+void pau_regdma_register_modem_link_protect(pau_regdma_modem_link_protect_cb_t cb);
+
+/**
+ * @brief Unregister the modem link trigger hook callback function
+ */
+void pau_regdma_unregister_modem_link_protect(void);
+#endif // SOC_PM_REGDMA_MODEM_LINK_PROTECT
+
+#if SOC_PM_SUPPORT_REGDMA_TRIGGERED_PHY
+/**
+ * @brief Wait for REGDMA to complete
+ */
+void pau_regdma_wait_work_done(void);
+
+/**
+ * @brief Check if the REGDMA task is triggered
+ * @param index the index of the task
+ * @return true if the task is triggered, false otherwise
+ */
+bool pau_regdma_check_etm_task_triggered(uint8_t index);
+
+/**
+ * @brief Clear the REGDMA task triggered status
+ * @param index the index of the task
+ */
+void pau_regdma_clear_etm_task_triggered(uint8_t index);
+
+/**
+ * @brief Set the configuration of the REGDMA etm modem link
+ */
+void pau_regdma_set_etm_modem_link_config(void);
+
+/**
+ * @brief Stop transmission on REGDMA etm modem link
+ */
+void pau_regdma_stop_etm_modem_link(void);
+#endif // SOC_PM_SUPPORT_REGDMA_TRIGGERED_PHY
+
 #ifdef __cplusplus
 }
 #endif

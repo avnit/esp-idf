@@ -88,7 +88,7 @@ int bt_gatt_service_register(struct bt_gatt_service *svc)
     }
 
     uuid = svc->attrs[0].user_data;
-    assert(uuid);
+    BT_LE_ASSERT(uuid);
 
     LOG_DBG("GattSvc[%04x]", uuid->val);
 
@@ -107,16 +107,6 @@ int bt_gatt_service_register(struct bt_gatt_service *svc)
     }
 
     return 0;
-}
-
-_IDF_ONLY
-int bt_gatt_service_register_safe(struct bt_gatt_service *svc)
-{
-    int err;
-    bt_le_host_lock();
-    err = bt_gatt_service_register(svc);
-    bt_le_host_unlock();
-    return err;
 }
 
 _LIB_ONLY
@@ -139,22 +129,12 @@ int bt_gatt_service_unregister(struct bt_gatt_service *svc)
     return 0;
 }
 
-_IDF_ONLY
-int bt_gatt_service_unregister_safe(struct bt_gatt_service *svc)
-{
-    int err;
-    bt_le_host_lock();
-    err = bt_gatt_service_unregister(svc);
-    bt_le_host_unlock();
-    return err;
-}
-
 _LIB_ONLY
 uint16_t bt_gatt_get_mtu(struct bt_conn *conn)
 {
     uint16_t mtu;
 
-    assert(conn);
+    BT_LE_ASSERT(conn);
 
 #if CONFIG_BT_BLUEDROID_ENABLED
     mtu = bt_le_bluedroid_gatt_get_mtu(conn);
@@ -230,7 +210,7 @@ uint16_t bt_gatt_attr_value_handle(const struct bt_gatt_attr *attr)
             if (bt_uuid_cmp(attr->uuid, BT_UUID_GATT_CHRC) == 0) {
                 struct bt_gatt_chrc *chrc = attr->user_data;
 
-                assert(chrc);
+                BT_LE_ASSERT(chrc);
                 handle = chrc->value_handle;
 
                 if (handle == 0) {
@@ -267,7 +247,7 @@ struct bt_gatt_attr *bt_gatt_attr_next(const struct bt_gatt_attr *attr)
 
     LOG_DBG("GattAttrNext");
 
-    assert(attr);
+    BT_LE_ASSERT(attr);
     handle = bt_gatt_attr_get_handle(attr);
 
     bt_gatt_foreach_attr(handle + 1, handle + 1, find_next, &next);
@@ -359,7 +339,7 @@ static void foreach_attr_type_dyndb(uint16_t start_handle,
         for (size_t i = 0; i < svc->attr_count; i++) {
             struct bt_gatt_attr *attr = &svc->attrs[i];
 
-            assert(attr->uuid);
+            BT_LE_ASSERT(attr->uuid);
 
             if (gatt_foreach_iter(attr, attr->handle,
                                   start_handle,
@@ -448,7 +428,7 @@ ssize_t bt_gatt_attr_read(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                           void *buf, uint16_t buf_len, uint16_t offset,
                           const void *value, uint16_t value_len)
 {
-    assert(buf);
+    BT_LE_ASSERT(buf);
 
     LOG_DBG("GattAttrRd[%u][%u][%u]", buf_len, offset, value_len);
 
@@ -471,7 +451,7 @@ int bt_gatt_notify_cb(struct bt_conn *conn, struct bt_gatt_notify_params *params
 {
     int err;
 
-    assert(params);
+    BT_LE_ASSERT(params);
 
     LOG_DBG("GattNtfCb[%u]", params->len);
 
@@ -486,10 +466,8 @@ int bt_gatt_notify_cb(struct bt_conn *conn, struct bt_gatt_notify_params *params
     err = bt_le_nimble_gatts_notify(conn, params);
 #endif
 
-    /* gatts_notify is synchronous (mbuf-copy + dispatch on return); fire the
-     * caller's completion cb here so state machines like PACS_FLAG_NOTIFY_RDY
-     * advance. */
-    if (err == 0 && params->func != NULL) {
+    /* Sync notify: complete cb only when conn is known (not broadcast-all). */
+    if (err == 0 && params->func != NULL && conn != NULL) {
         params->func(conn, params->user_data);
     }
 
@@ -499,8 +477,8 @@ int bt_gatt_notify_cb(struct bt_conn *conn, struct bt_gatt_notify_params *params
 _LIB_IDF
 int bt_gatt_indicate(struct bt_conn *conn, struct bt_gatt_indicate_params *params)
 {
-    assert(params);
-    assert(params->attr && params->attr->uuid);
+    BT_LE_ASSERT(params);
+    BT_LE_ASSERT(params->attr && params->attr->uuid);
 
     LOG_DBG("GattInd[%s]", bt_uuid_str(params->attr->uuid));
 
@@ -534,7 +512,7 @@ ssize_t bt_gatt_attr_read_service(struct bt_conn *conn,
 {
     struct bt_uuid *uuid = attr->user_data;
 
-    assert(uuid);
+    BT_LE_ASSERT(uuid);
 
     LOG_DBG("GattAttrRdSvc[%s]", bt_uuid_str(uuid));
 
@@ -545,7 +523,7 @@ ssize_t bt_gatt_attr_read_service(struct bt_conn *conn,
     }
 
     /* BT_UUID_TYPE_32 is not expected for service UUIDs in LE Audio */
-    assert(uuid->type == BT_UUID_TYPE_128);
+    BT_LE_ASSERT(uuid->type == BT_UUID_TYPE_128);
 
     return bt_gatt_attr_read(conn, attr, buf, len, offset, BT_UUID_128(uuid)->val, 16);
 }
@@ -581,8 +559,8 @@ ssize_t bt_gatt_attr_read_included(struct bt_conn *conn,
     uint16_t handle;
 
     incl = attr->user_data;
-    assert(incl);
-    assert(incl->user_data);
+    BT_LE_ASSERT(incl);
+    BT_LE_ASSERT(incl->user_data);
 
     handle = bt_gatt_attr_get_handle(incl);
     uuid = incl->user_data;
@@ -618,8 +596,8 @@ ssize_t bt_gatt_attr_read_chrc(struct bt_conn *conn,
     struct gatt_chrc pdu;
     uint8_t value_len;
 
-    assert(chrc);
-    assert(chrc->uuid);
+    BT_LE_ASSERT(chrc);
+    BT_LE_ASSERT(chrc->uuid);
 
     pdu.properties = chrc->properties;
     pdu.value_handle = sys_cpu_to_le16(bt_gatt_attr_value_handle(attr));
@@ -661,7 +639,7 @@ static struct bt_gatt_ccc_cfg *gatts_find_free_ccc_cfg(struct bt_gatt_ccc_manage
 static struct bt_gatt_ccc_cfg *gatts_find_ccc_cfg_by_conn(const struct bt_conn *conn,
                                                           struct bt_gatt_ccc_managed_user_data *ccc)
 {
-    assert(conn);
+    BT_LE_ASSERT(conn);
 
     for (size_t i = 0; i < ccc->cfg_count; i++) {
         struct bt_gatt_ccc_cfg *cfg = &ccc->cfg[i];
@@ -784,10 +762,10 @@ ssize_t bt_gatt_attr_read_ccc(struct bt_conn *conn,
     const struct bt_gatt_ccc_cfg *cfg;
     uint16_t value;
 
-    assert(attr);
+    BT_LE_ASSERT(attr);
 
     ccc = attr->user_data;
-    assert(ccc);
+    BT_LE_ASSERT(ccc);
 
     LOG_DBG("GattAttrRdCcc[%u][%u]", len, offset);
 
@@ -814,10 +792,10 @@ ssize_t bt_gatt_attr_write_ccc(struct bt_conn *conn,
     bool new_entry;
     uint16_t value;
 
-    assert(attr);
+    BT_LE_ASSERT(attr);
 
     ccc = attr->user_data;
-    assert(ccc);
+    BT_LE_ASSERT(ccc);
 
     LOG_DBG("GattAttrWrCcc[%u][%u][%02x]", len, offset, flags);
 
@@ -910,8 +888,8 @@ bool bt_gatt_is_subscribed(struct bt_conn *conn,
 {
     const struct bt_gatt_ccc_managed_user_data *ccc;
 
-    assert(conn);
-    assert(attr && attr->uuid);
+    BT_LE_ASSERT(conn);
+    BT_LE_ASSERT(attr && attr->uuid);
 
     LOG_DBG("GattIsSub[%04x][%s]", ccc_type, bt_uuid_str(attr->uuid));
 
@@ -950,7 +928,7 @@ bool bt_gatt_is_subscribed(struct bt_conn *conn,
         }
 
         attr = bt_gatt_attr_next(attr);
-        assert(attr && attr->uuid);
+        BT_LE_ASSERT(attr && attr->uuid);
 
         LOG_DBG("GattIsSubAttr[%s][%d]", bt_uuid_str(attr->uuid), __LINE__);
     }
@@ -962,7 +940,7 @@ bool bt_gatt_is_subscribed(struct bt_conn *conn,
             return false;
         }
 
-        assert(attr->uuid);
+        BT_LE_ASSERT(attr->uuid);
         LOG_DBG("GattIsSubAttr[%s][%d]", bt_uuid_str(attr->uuid), __LINE__);
     }
 
@@ -978,7 +956,7 @@ bool bt_gatt_is_subscribed(struct bt_conn *conn,
         }
     }
 
-    assert(attr->uuid);
+    BT_LE_ASSERT(attr->uuid);
 
     LOG_DBG("GattIsSubAttr[%s][%d]", bt_uuid_str(attr->uuid), __LINE__);
 
@@ -987,7 +965,7 @@ bool bt_gatt_is_subscribed(struct bt_conn *conn,
     }
 
     ccc = attr->user_data;
-    assert(ccc);
+    BT_LE_ASSERT(ccc);
 
     /* Check if the connection is subscribed */
     for (size_t i = 0; i < ccc->cfg_count; i++) {
@@ -1013,7 +991,7 @@ static int gatts_ccc_cfg_update(struct bt_conn *conn,
     bool value_changed;
 
     ccc = attr->user_data;
-    assert(ccc);
+    BT_LE_ASSERT(ccc);
 
     /* LOG_DBG("GattsCccCfgUpd[%04x]", value); */
 
@@ -1113,27 +1091,23 @@ int bt_gatts_sub_changed(uint16_t conn_handle,
 }
 
 _IDF_ONLY
-int bt_gattc_disc_start_safe(uint16_t conn_handle)
+int bt_gattc_disc_start(uint16_t conn_handle)
 {
-    int err;
     LOG_DBG("GattcDiscStart[%u]", conn_handle);
-    bt_le_host_lock();
 #if CONFIG_BT_BLUEDROID_ENABLED
-    err = bt_le_bluedroid_gattc_disc_start(conn_handle);
+    return bt_le_bluedroid_gattc_disc_start(conn_handle);
 #else
-    err = bt_le_nimble_gattc_disc_start(conn_handle);
+    return bt_le_nimble_gattc_disc_start(conn_handle);
 #endif
-    bt_le_host_unlock();
-    return err;
 }
 
 _LIB_ONLY
 int bt_gatt_discover(struct bt_conn *conn, struct bt_gatt_discover_params *params)
 {
-    assert(conn);
-    assert(params);
-    assert(params->start_handle && params->end_handle);
-    assert(params->start_handle <= params->end_handle);
+    BT_LE_ASSERT(conn);
+    BT_LE_ASSERT(params);
+    BT_LE_ASSERT(params->start_handle && params->end_handle);
+    BT_LE_ASSERT(params->start_handle <= params->end_handle);
 
     LOG_DBG("GattDisc[%u][%u]", params->start_handle, params->end_handle);
 
@@ -1276,7 +1250,7 @@ static int gattc_ccc_discover(struct bt_conn *conn, struct bt_gatt_subscribe_par
         .val = BT_UUID_GATT_CCC_VAL,
     };
 
-    assert(params->disc_params);
+    BT_LE_ASSERT(params->disc_params);
 
     LOG_DBG("GattcCccDisc[%u][%u]", params->value_handle, params->end_handle);
 
@@ -1310,11 +1284,11 @@ int bt_gatt_subscribe(struct bt_conn *conn, struct bt_gatt_subscribe_params *par
     bool has_subscription = false;
     struct gattc_sub *sub;
 
-    assert(conn);
-    assert(params);
-    assert(params->notify);
-    assert(params->value);
-    assert(params->ccc_handle == BT_GATT_AUTO_DISCOVER_CCC_HANDLE ||
+    BT_LE_ASSERT(conn);
+    BT_LE_ASSERT(params);
+    BT_LE_ASSERT(params->notify);
+    BT_LE_ASSERT(params->value);
+    BT_LE_ASSERT(params->ccc_handle == BT_GATT_AUTO_DISCOVER_CCC_HANDLE ||
            (params->end_handle && params->disc_params));
 
     LOG_DBG("GattcSub[%u][%u][%u][%04x]",
@@ -1369,6 +1343,14 @@ int bt_gatt_subscribe(struct bt_conn *conn, struct bt_gatt_subscribe_params *par
                 params->value_handle = 0; /* unlinked: clear retry guard */
                 return err;
             }
+
+            /* Adapter may have returned 0 while leaving ccc unresolved
+             * (cb got attr==NULL). Do not append a dead subscription. */
+            if (params->ccc_handle == BT_GATT_AUTO_DISCOVER_CCC_HANDLE) {
+                LOG_ERR("GattcSubCccUnresolved[%u]", params->value_handle);
+                params->value_handle = 0;
+                return -ENOENT;
+            }
         } else {
             /* Note:
              * If the CCC handle is auto-discovered, and during the
@@ -1403,8 +1385,8 @@ int bt_gatt_unsubscribe(struct bt_conn *conn, struct bt_gatt_subscribe_params *p
     bool found = false;
     int err = 0;
 
-    assert(conn);
-    assert(params);
+    BT_LE_ASSERT(conn);
+    BT_LE_ASSERT(params);
 
     LOG_DBG("GattcUnsub[%04x][%u][%u][%u]",
             params->value, params->value_handle, params->ccc_handle, params->end_handle);
@@ -1469,10 +1451,8 @@ int bt_gatt_unsubscribe(struct bt_conn *conn, struct bt_gatt_subscribe_params *p
 
     LOG_DBG("GattcUnsub[%u][%d]", has_subscription, err);
 
-    if (has_subscription || err) {
-        /* Notify with NULL data to complete unsubscribe */
-        params->notify(conn, params, NULL, 0);
-    }
+    /* Notify with NULL data to complete unsubscribe */
+    params->notify(conn, params, NULL, 0);
 
     return 0;
 }
@@ -1480,8 +1460,8 @@ int bt_gatt_unsubscribe(struct bt_conn *conn, struct bt_gatt_subscribe_params *p
 _LIB_IDF
 int bt_gatt_read(struct bt_conn *conn, struct bt_gatt_read_params *params)
 {
-    assert(conn);
-    assert(params);
+    BT_LE_ASSERT(conn);
+    BT_LE_ASSERT(params);
 
     LOG_DBG("GattRd[%u]", params->handle_count);
 
@@ -1496,7 +1476,7 @@ int bt_gatt_read(struct bt_conn *conn, struct bt_gatt_read_params *params)
     }
 
     if (params->handle_count == 0) {
-        assert(params->by_uuid.uuid);
+        BT_LE_ASSERT(params->by_uuid.uuid);
 
         if (params->by_uuid.uuid->type != BT_UUID_TYPE_16) {
             LOG_ERR("GattRdInvUuid[%s]", bt_uuid_str(params->by_uuid.uuid));
@@ -1514,11 +1494,11 @@ int bt_gatt_read(struct bt_conn *conn, struct bt_gatt_read_params *params)
 _LIB_IDF
 int bt_gatt_write(struct bt_conn *conn, struct bt_gatt_write_params *params)
 {
-    assert(conn);
-    assert(params);
-    assert(params->func);
-    assert(params->handle);
-    assert((!params->data ^ !params->length) == 0);
+    BT_LE_ASSERT(conn);
+    BT_LE_ASSERT(params);
+    BT_LE_ASSERT(params->func);
+    BT_LE_ASSERT(params->handle);
+    BT_LE_ASSERT((!params->data ^ !params->length) == 0);
 
     LOG_DBG("GattWr[%u][%u][%u]", params->handle, params->length, params->offset);
 
@@ -1545,9 +1525,9 @@ int bt_gatt_write_without_response_cb(struct bt_conn *conn, uint16_t handle,
                                       bool sign, bt_gatt_complete_func_t func,
                                       void *user_data)
 {
-    assert(conn);
-    assert(handle);
-    assert((!data ^ !length) == 0);
+    BT_LE_ASSERT(conn);
+    BT_LE_ASSERT(handle);
+    BT_LE_ASSERT((!data ^ !length) == 0);
 
     ARG_UNUSED(func);
     ARG_UNUSED(user_data);
@@ -1629,11 +1609,42 @@ void bt_le_acl_conn_bond_deleted_gatt_listener(uint8_t id, const bt_addr_le_t *p
 
 void bt_le_gatt_handle_event(uint8_t *data, size_t data_len)
 {
-    assert(data && data_len);
+    BT_LE_ASSERT(data && data_len);
 
 #if CONFIG_BT_BLUEDROID_ENABLED
     bt_le_bluedroid_gatt_handle_event(data, data_len);
 #else
     bt_le_nimble_gatt_handle_event(data, data_len);
 #endif
+}
+
+void bt_le_gatt_event_free(void *data)
+{
+    struct bt_le_gatt_event_param *qev = data;
+
+    if (qev == NULL) {
+        return;
+    }
+
+    switch (qev->type) {
+    case BT_LE_GATTC_NOTIFY_RX_EVENT:
+        if (qev->gattc_notify_rx.value) {
+            free(qev->gattc_notify_rx.value);
+        }
+        break;
+    case BT_LE_GATTC_READ_CHRC_EVENT:
+        if (qev->gattc_read_chrc.value) {
+            free(qev->gattc_read_chrc.value);
+        }
+        break;
+    case BT_LE_GATTS_WRITE_EVENT:
+        if (qev->gatts_write.value) {
+            free(qev->gatts_write.value);
+        }
+        break;
+    default:
+        break;
+    }
+
+    free(qev);
 }

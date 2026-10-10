@@ -21,7 +21,7 @@ Once initialized, applications access NVS namespaces using :cpp:func:`nvs_open` 
 
 .. note::
 
-    NVS can also operate through the Block Device Layer (BDL) when :ref:`CONFIG_NVS_BDL_STACK` is enabled, allowing use of alternative storage backends beyond standard flash partitions. In BDL mode, :cpp:func:`nvs_flash_init_partition_ptr` is not available, but :cpp:func:`nvs_flash_init_partition_bdl` becomes available for custom block device initialization. See :ref:`nvs_internals` > :ref:`nvs_underlying_storage` for details.
+    NVS can also operate through the Block Device Layer (BDL) when :menuitem:`CONFIG_NVS_BDL_STACK` is enabled, allowing use of alternative storage backends beyond standard flash partitions. In BDL mode, :cpp:func:`nvs_flash_init_partition_ptr` is not available, but :cpp:func:`nvs_flash_init_partition_bdl` becomes available for custom block device initialization. See :ref:`nvs_internals` > :ref:`nvs_underlying_storage` for details.
 
 .. note::
 
@@ -76,7 +76,7 @@ Namespaces
 
 To mitigate potential conflicts in key names between different components, NVS assigns each key-value pair to one of the namespaces. Namespace names follow the same rules as key names, i.e., the maximum length is 15 characters. Furthermore, there can be no more than 254 different namespaces in one NVS partition. Namespace name is specified in the :cpp:func:`nvs_open` or :cpp:type:`nvs_open_from_partition` call. This call returns an opaque handle, which is used in subsequent calls to the ``nvs_get_*``, ``nvs_set_*``, and :cpp:func:`nvs_commit` functions. This way, a handle is associated with a namespace and partition, and key names will not collide with same names in other namespaces.
 
-The open mode parameter controls the access level and security behavior:
+The ``open_mode`` parameter controls the access level and security behavior:
 
 - ``NVS_READONLY``: Read-only access. All write operations will be rejected.
 - ``NVS_READWRITE``: Standard read-write access. Erased data is marked as deleted but remains in flash.
@@ -85,6 +85,22 @@ The open mode parameter controls the access level and security behavior:
 .. note::
 
     Namespaces with the same name in different NVS partitions are considered as separate namespaces.
+
+C++ API
+^^^^^^^
+
+In addition to the C API described above, NVS provides a C++ class interface in :component_file:`nvs_flash/include/nvs_handle.hpp` (namespace ``nvs``).
+
+Use ``nvs::open_nvs_handle()`` or ``nvs::open_nvs_handle_from_partition()`` to open a namespace. These functions return a ``std::unique_ptr<nvs::NVSHandle>``. The handle is closed automatically when the unique pointer is destroyed (RAII), so there is no need to call a separate close function.
+
+``nvs::NVSHandle`` provides methods that mirror the C API, including:
+
+- ``set_item`` / ``get_item`` — typed get/set for integral, floating-point, and enum types
+- ``set_string`` / ``get_string`` — string values
+- ``set_blob`` / ``get_blob`` — binary blob values
+- ``commit``, ``erase_item``, ``erase_all``, ``purge_all``, ``find_key``, and related helpers
+
+The ``open_mode`` values (``NVS_READONLY``, ``NVS_READWRITE``, ``NVS_READWRITE_PURGE``) and key and namespace constraints are the same as for the C API. See the :ref:`API Reference <nvs-api-reference>` below for full class and function documentation, and :example:`storage/nvs/nvs_rw_value_cxx` for a complete example.
 
 NVS Iterators
 ^^^^^^^^^^^^^
@@ -167,9 +183,9 @@ Although not recommended, NVS can store tens of thousands of keys and NVS partit
 
     By default, internal NVS allocates a heap in internal RAM. With a large NVS partition or big number of keys, the application can exhaust the internal RAM heap just on NVS overhead.
 
-    Applications using modules with SPI-connected PSRAM can overcome this limitation by enabling the Kconfig option :ref:`CONFIG_NVS_ALLOCATE_CACHE_IN_SPIRAM` which redirects RAM allocation to the SPI-connected PSRAM.
+    Applications using modules with SPI-connected PSRAM can overcome this limitation by enabling the Kconfig option :menuitem:`CONFIG_NVS_ALLOCATE_CACHE_IN_SPIRAM` which redirects RAM allocation to the SPI-connected PSRAM.
 
-    This option is available in the nvs_flash component of the menuconfig menu when SPIRAM is enabled and :ref:`CONFIG_SPIRAM_USE` is set to ``CONFIG_SPIRAM_USE_CAPS_ALLOC``.
+    This option is available in the nvs_flash component of the menuconfig menu when SPIRAM is enabled and :menuitem:`CONFIG_SPIRAM_USE` is set to ``CONFIG_SPIRAM_USE_CAPS_ALLOC``.
 
     .. note::
 
@@ -180,7 +196,7 @@ Unstable Power Conditions
 
 When NVS is used in systems powered by weak or unstable energy sources (such as solar or battery), flash erase operations may occasionally fail to complete without being detected by the application. This can create a mismatch between the actual flash contents and the expected layout of reserved pages. In rare cases, especially during unexpected power loss, this may exhaust the available NVS pages and cause partition initialization to fail with the error ``ESP_ERR_NVS_NO_FREE_PAGES``.
 
-To address this issue, the Kconfig option :ref:`CONFIG_NVS_FLASH_VERIFY_ERASE` enables verification of flash erase operations by reading back the affected page. If the page is not fully erased to ``0xFF`` after a ``flash_erase`` operation, the erase is retried until the page is correctly cleared. The total number of erase attempts, including the initial attempt, is controlled by the Kconfig option :ref:`CONFIG_NVS_FLASH_ERASE_ATTEMPTS`.
+To address this issue, the Kconfig option :menuitem:`CONFIG_NVS_FLASH_VERIFY_ERASE` enables verification of flash erase operations by reading back the affected page. If the page is not fully erased to ``0xFF`` after a ``flash_erase`` operation, the erase is retried until the page is correctly cleared. The total number of erase attempts, including the initial attempt, is controlled by the Kconfig option :menuitem:`CONFIG_NVS_FLASH_ERASE_ATTEMPTS`.
 
 .. note::
 
@@ -264,7 +280,7 @@ You can find code examples in the :example:`storage/nvs` directory of ESP-IDF ex
 
 :example:`storage/nvs/nvs_rw_value_cxx`
 
-  This example does exactly the same as :example:`storage/nvs/nvs_rw_value`, except that it uses the C++ NVS handle class.
+  This example does exactly the same as :example:`storage/nvs/nvs_rw_value`, except that it uses the C++ NVS handle class (``nvs::NVSHandle`` via ``nvs::open_nvs_handle()``).
 
 :example:`storage/nvs/nvs_statistics`
 
@@ -526,7 +542,7 @@ The default minimal size for NVS to function properly is 12 KiB (``0x3000``), me
 Underlying Storage
 ^^^^^^^^^^^^^^^^^^
 
-At build time the mode NVS will use for accessing its underlying storage can be configured. Two options are available in menuconfig option :ref:`CONFIG_NVS_BDL_STACK`.
+At build time the mode NVS will use for accessing its underlying storage can be configured. Two options are available in menuconfig option :menuitem:`CONFIG_NVS_BDL_STACK`.
 
 **ESP Partition API (default)**: NVS accesses storage using the :ref:`esp_partition <flash-partition-apis>`. This is the default mode of operation, where NVS uses SPI flash partitions defined in the partition table. In this mode:
 
@@ -552,9 +568,13 @@ At build time the mode NVS will use for accessing its underlying storage can be 
 
 
 
+.. _nvs-api-reference:
+
 API Reference
 -------------
 
 .. include-build-file:: inc/nvs_flash.inc
 
 .. include-build-file:: inc/nvs.inc
+
+.. include-build-file:: inc/nvs_handle.inc

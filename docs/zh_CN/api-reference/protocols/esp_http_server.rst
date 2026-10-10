@@ -10,7 +10,7 @@ HTTP Server 组件提供了在 ESP32 上运行轻量级 Web 服务器的功能�
 
     * :cpp:func:`httpd_start`： 创建 HTTP 服务器的实例，根据具体的配置为其分配内存和资源，并返回该服务器实例的句柄。服务器使用了两个套接字，一个用来监听 HTTP 流量（TCP 类型），另一个用来处理控制信号（UDP 类型），它们在服务器的任务循环中轮流使用。通过向 ``httpd_start()`` 传递 ``httpd_config_t`` 结构体，可以在创建服务器实例时配置任务的优先级和堆栈的大小。TCP 流量被解析为 HTTP 请求，根据请求的 URI 来调用用户注册的处理程序，在处理程序中需要发送回 HTTP 响应数据包。
     * :cpp:func:`httpd_stop`： 根据传入的句柄停止服务器，并释放相关联的内存和资源。这是一个阻塞函数，首先给服务器任务发送停止信号，然后等待其终止。期间服务器任务会关闭所有已打开的连接，删除已注册的 URI 处理程序，并将所有会话的上下文数据重置为空。
-    * :cpp:func:`httpd_register_uri_handler`： 通过传入 ``httpd_uri_t`` 结构体类型的对象来注册 URI 处理程序。该结构体包含如下成员：``uri`` 名字，``method`` 类型（比如 ``HTTP_GET/HTTP_POST/HTTP_PUT`` 等等）， ``esp_err_t *handler (httpd_req_t *req)`` 类型的函数指针，指向用户上下文数据的 ``user_ctx`` 指针。
+    * :cpp:func:`httpd_register_uri_handler`： 通过传入 ``httpd_uri_t`` 结构体类型的对象来注册 URI 处理程序。该结构体包含如下成员：``uri`` 名字，``method`` 类型（比如 ``HTTP_GET/HTTP_POST/HTTP_PUT/HTTP_QUERY`` 等等）， ``esp_err_t *handler (httpd_req_t *req)`` 类型的函数指针，指向用户上下文数据的 ``user_ctx`` 指针。RFC 10008 的 ``HTTP_QUERY`` 安全且幂等，可以携带请求体；使用 ``.method = HTTP_QUERY`` 注册即可。
 
 .. note::
 
@@ -93,7 +93,7 @@ HTTP 服务器具有长连接的功能，允许重复使用同一个连接（会
 WebSocket 服务器
 ----------------
 
-HTTP 服务器组件提供 websocket 支持。可以在 menuconfig 中使用 :ref:`CONFIG_HTTPD_WS_SUPPORT` 选项启用 websocket 功能。
+HTTP 服务器组件提供 websocket 支持。可以在 menuconfig 中使用 :menuitem:`CONFIG_HTTPD_WS_SUPPORT` 选项启用 websocket 功能。
 
 :example:`protocols/http_server/ws_echo_server` 演示了如何使用 HTTP 服务器创建一个 WebSocket 回显服务器，该服务器在本地网络上启动，与 WebSocket 客户端进行交互，回显接收到的 WebSocket 帧。
 
@@ -105,7 +105,7 @@ HTTP 服务器组件为 WebSocket 端点提供了握手前回调 (pre-handshake 
 
 握手前回调函数可用于身份认证、权限校验及其他检查。如果回调返回 :c:macro:`ESP_OK`，WebSocket 握手将继续进行；如果返回其他值，则握手中止，连接也会关闭。
 
-要使用 WebSocket 握手前回调，需在项目配置中启用 :ref:`CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT` 选项。
+要使用 WebSocket 握手前回调，需在项目配置中启用 :menuitem:`CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT` 选项。
 
 WebSocket 握手后回调
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -114,7 +114,7 @@ WebSocket 握手后回调
 
 此时连接已升级为 WebSocket，服务器已返回 WebSocket 握手响应。该握手后回调可用于记录日志、发送初始消息或执行其他初始化任务。
 
-要使用 WebSocket 握手后回调功能，需在项目配置中启用 :ref:`CONFIG_HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT` 选项。
+要使用 WebSocket 握手后回调功能，需在项目配置中启用 :menuitem:`CONFIG_HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT` 选项。
 
 .. code-block:: c
 
@@ -137,6 +137,36 @@ WebSocket 握手后回调
 
     // 在启动服务器后注册该处理程序
     httpd_register_uri_handler(server, &ws);
+
+
+WebSocket 控制帧处理程序
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+默认情况下，服务器会自动回复 WebSocket 控制帧——收到 PING 帧时回复 PONG 帧，收到 CLOSE 帧时回复 CLOSE 帧——应用程序不会参与该过程。若将 :cpp:type:`httpd_uri_t` 中的 ``handle_ws_control_frames`` 设置为 true，则会禁用该行为，控制帧将交由数据处理程序处理，此时应用程序需要自行接收控制帧并发送协议回复。
+
+``ws_control_handler`` 回调提供了一种折中方案：设置该回调（且 ``handle_ws_control_frames`` 为 true）后，控制帧（PING、PONG、CLOSE）将交由该专用处理程序处理，而不再传递给数据处理程序；服务器仍会自行接收帧体，并在回调返回后自动发送协议回复。该机制适用于观测心跳（跟踪 PONG 响应）或记录连接关闭原因，而无需重新实现回复逻辑。
+
+传递给该回调的帧为只读，且由服务器持有，仅在回调调用期间有效，因此回调中不得释放或保留该帧。如果回调返回错误，服务器仍会发送协议回复，然后关闭连接。
+
+.. code-block:: c
+
+    static esp_err_t ws_control_frame_handler(httpd_req_t *req, const httpd_ws_frame_t *frame)
+    {
+        // 在此处观测 PING/PONG/CLOSE 帧（例如心跳跟踪、日志记录）
+        // 回调返回后，服务器会自行发送协议回复
+        return ESP_OK;
+    }
+
+    // 注册带有专用控制帧处理程序的 WebSocket URI 处理程序
+    static const httpd_uri_t ws = {
+        .uri        = "/ws",
+        .method     = HTTP_GET,
+        .handler    = handler,           // WebSocket 数据处理程序
+        .user_ctx   = NULL,
+        .is_websocket = true,
+        .handle_ws_control_frames = true,
+        .ws_control_handler = ws_control_frame_handler
+    };
 
 
 事件处理

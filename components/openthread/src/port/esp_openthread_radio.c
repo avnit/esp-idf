@@ -10,7 +10,6 @@
 #include "sdkconfig.h"
 #include "esp_check.h"
 #include "esp_ieee802154.h"
-#include "esp_ieee802154_types.h"
 #include "esp_mac.h"
 #include "esp_openthread_common.h"
 #include "esp_openthread_common_macro.h"
@@ -37,7 +36,6 @@
 #include "esp_coex_i154.h"
 #endif
 
-#define ESP_RECEIVE_SENSITIVITY -120
 #define ESP_OPENTHREAD_XTAL_ACCURACY CONFIG_OPENTHREAD_XTAL_ACCURACY
 #define ESP_OPENTHREAD_CSL_ACCURACY CONFIG_OPENTHREAD_CSL_ACCURACY
 #define ESP_OPENTHREAD_CSL_UNCERTAIN CONFIG_OPENTHREAD_CSL_UNCERTAIN
@@ -405,11 +403,15 @@ bool otPlatRadioGetPromiscuous(otInstance *aInstance)
 
 void otPlatRadioEnableSrcMatch(otInstance *aInstance, bool aEnable)
 {
+    if (aEnable) {
 #if OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
-    esp_ieee802154_set_pending_mode(ESP_IEEE802154_AUTO_PENDING_ENHANCED);
+        esp_ieee802154_set_pending_mode(ESP_IEEE802154_AUTO_PENDING_ENHANCED);
 #else
-    esp_ieee802154_set_pending_mode(ESP_IEEE802154_AUTO_PENDING_ENABLE);
+        esp_ieee802154_set_pending_mode(ESP_IEEE802154_AUTO_PENDING_ENABLE);
 #endif // OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
+    } else {
+        esp_ieee802154_set_pending_mode(ESP_IEEE802154_AUTO_PENDING_DISABLE);
+    }
 }
 
 otError otPlatRadioAddSrcMatchShortEntry(otInstance *aInstance, uint16_t aShortAddress)
@@ -484,7 +486,7 @@ otError otPlatRadioSetCcaEnergyDetectThreshold(otInstance *aInstance, int8_t aTh
 
 int8_t otPlatRadioGetReceiveSensitivity(otInstance *aInstance)
 {
-    return ESP_RECEIVE_SENSITIVITY;
+    return esp_ieee802154_get_receive_sensitivity();
 }
 
 #if CONFIG_OPENTHREAD_DIAG

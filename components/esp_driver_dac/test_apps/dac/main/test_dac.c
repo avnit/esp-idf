@@ -59,8 +59,6 @@ TEST_CASE("DAC_API_basic_logic_test", "[dac]")
     dac_cosine_config_t cos0_cfg = {
         .chan_id = DAC_CHAN_0,
         .freq_hz = 1000, // It will be covered by 8000 in the latter configuration
-        .clk_src = DAC_COSINE_CLK_SRC_DEFAULT,
-        .offset = 0,
         .phase = DAC_COSINE_PHASE_0,
         .atten = DAC_COSINE_ATTEN_DEFAULT,
         .flags.force_set_freq = false,
@@ -68,8 +66,6 @@ TEST_CASE("DAC_API_basic_logic_test", "[dac]")
     dac_cosine_config_t cos1_cfg = {
         .chan_id = DAC_CHAN_1,
         .freq_hz = 8000,
-        .clk_src = DAC_COSINE_CLK_SRC_DEFAULT,
-        .offset = 0,
         .phase = DAC_COSINE_PHASE_180,
         .atten = DAC_COSINE_ATTEN_DB_6,
         .flags.force_set_freq = false,
@@ -96,8 +92,6 @@ TEST_CASE("DAC_API_basic_logic_test", "[dac]")
         .desc_num = 8,
         .buf_size = 2048,
         .freq_hz = 48000,
-        .offset = 0,
-        .clk_src = DAC_DIGI_CLK_SRC_DEFAULT,
         .chan_mode = DAC_CHANNEL_MODE_SIMUL,
     };
     /* DMA peripheral availability test */
@@ -129,8 +123,6 @@ TEST_CASE("DAC_memory_leak_test", "[dac]")
         .desc_num = 8,
         .buf_size = 2048,
         .freq_hz = 48000,
-        .offset = 0,
-        .clk_src = DAC_DIGI_CLK_SRC_DEFAULT,
         .chan_mode = DAC_CHANNEL_MODE_SIMUL,
     };
     size_t len = 1024;
@@ -206,8 +198,6 @@ TEST_CASE("DAC_dma_write_test", "[dac]")
         .desc_num = 8,
         .buf_size = 1024,
         .freq_hz = 48000,
-        .offset = 0,
-        .clk_src = DAC_DIGI_CLK_SRC_DEFAULT,
         .chan_mode = DAC_CHANNEL_MODE_SIMUL,
     };
     size_t len = 520; // To test if the driver can work correctly with uncommon length
@@ -233,7 +223,7 @@ TEST_CASE("DAC_dma_write_test", "[dac]")
  * With small DMA buffers and a deliberate long delay between writes, the DMA drains all of
  * its descriptors and stops (raises TEOF) before the next write happens. Every write except
  * the first one therefore has to re-link a descriptor and resume the transfer through
- * dac_dma_periph_trans_append(). If that resume path is broken, the descriptors are never
+ * dac_priv_dma_trans_append(). If that resume path is broken, the descriptors are never
  * recycled, so dac_continuous_write() will return ESP_ERR_TIMEOUT, and dac_continuous_disable()
  * (which waits for the ongoing synchronous transfer to stop) will block forever. */
 TEST_CASE("DAC_dma_sync_write_resume_test", "[dac]")
@@ -244,8 +234,6 @@ TEST_CASE("DAC_dma_sync_write_resume_test", "[dac]")
         .desc_num = 4,
         .buf_size = 256,
         .freq_hz = 48000,
-        .offset = 0,
-        .clk_src = DAC_DIGI_CLK_SRC_DEFAULT,
         .chan_mode = DAC_CHANNEL_MODE_SIMUL,
     };
 
@@ -262,9 +250,9 @@ TEST_CASE("DAC_dma_sync_write_resume_test", "[dac]")
     /* Waiting 100 ms between writes guarantees the DMA has fully drained and stopped,
      * forcing every subsequent write through the resume path. */
     for (int i = 0; i < 10; i++) {
-        size_t bytes_loaded = 0;
-        TEST_ESP_OK(dac_continuous_write(cont_handle, buf, len, &bytes_loaded, 1000));
-        TEST_ASSERT_EQUAL(len, bytes_loaded);
+        size_t loaded_cnt = 0;
+        TEST_ESP_OK(dac_continuous_write(cont_handle, buf, len, &loaded_cnt, 1000));
+        TEST_ASSERT_EQUAL(len, loaded_cnt);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
@@ -316,8 +304,6 @@ TEST_CASE("DAC_dma_convert_frequency_test", "[dac]")
         .desc_num = 8,
         .buf_size = 2048,
         .freq_hz = 20000,
-        .offset = 0,
-        .clk_src = DAC_DIGI_CLK_SRC_DEFAULT,
         .chan_mode = DAC_CHANNEL_MODE_SIMUL,
     };
     TEST_ESP_OK(dac_continuous_new_channels(&cont_cfg, &cont_handle));
@@ -373,8 +359,6 @@ TEST_CASE("DAC_cosine_wave_test", "[dac]")
     dac_cosine_config_t cos0_cfg = {
         .chan_id = DAC_CHAN_0,
         .freq_hz = 1000, // It will be covered by 8000 in the latter configuration
-        .clk_src = DAC_COSINE_CLK_SRC_DEFAULT,
-        .offset = 0,
         .phase = DAC_COSINE_PHASE_0,
         .atten = DAC_COSINE_ATTEN_DEFAULT,
         .flags.force_set_freq = false,
@@ -382,8 +366,6 @@ TEST_CASE("DAC_cosine_wave_test", "[dac]")
     dac_cosine_config_t cos1_cfg = {
         .chan_id = DAC_CHAN_1,
         .freq_hz = 1000,
-        .clk_src = DAC_COSINE_CLK_SRC_DEFAULT,
-        .offset = 0,
         .phase = DAC_COSINE_PHASE_180,
         .atten = DAC_COSINE_ATTEN_DB_6,
         .flags.force_set_freq = false,
@@ -452,8 +434,6 @@ TEST_CASE("DAC_continuous_mode_concurrency_test", "[dac]")
         .desc_num = 8,
         .buf_size = 1024,
         .freq_hz = 48000,
-        .offset = 0,
-        .clk_src = DAC_DIGI_CLK_SRC_DEFAULT,
         .chan_mode = DAC_CHANNEL_MODE_SIMUL,
     };
 

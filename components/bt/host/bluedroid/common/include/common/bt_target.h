@@ -75,11 +75,7 @@
 
 #define BR_EDR_MAX_RECONNECT_ON_COLLISION UC_BT_CLASSIC_MAX_RECONNECT_ON_COLLISION
 
-#define ENC_KEY_SIZE_CTRL_MODE_NONE 0
-#define ENC_KEY_SIZE_CTRL_MODE_STD  1
-#define ENC_KEY_SIZE_CTRL_MODE_VSC  2
-#define ENC_KEY_SIZE_CTRL_MODE      UC_BT_ENC_KEY_SIZE_CTRL_MODE
-
+#define ESP_BT_CLASSIC_ENABLE_ENC_KEY_SIZE_CTRL_VSC    UC_BT_CLASSIC_ENABLE_ENC_KEY_SIZE_CTRL_VSC
 #define ESP_BT_CLASSIC_ENABLE_POWER_CTRL_VSC UC_BT_CLASSIC_ENABLE_POWER_CTRL_VSC
 
 #if (UC_BT_A2DP_ENABLED == TRUE)
@@ -212,11 +208,52 @@
 #define GOEPC_INCLUDED              TRUE
 #endif /* UC_BT_GOEPC_ENABLED */
 
+#if UC_BT_GOEPS_ENABLED
+#ifndef RFCOMM_INCLUDED
+#define RFCOMM_INCLUDED             TRUE
+#endif
+#ifndef OBEX_INCLUDED
+#define OBEX_INCLUDED               TRUE
+#endif
+#define GOEPS_INCLUDED              TRUE
+#endif /* UC_BT_GOEPS_ENABLED */
+
 #if UC_BT_PBAC_ENABLED
 #define BTC_PBA_CLIENT_INCLUDED     TRUE
 #define BTC_PBA_SUPPORTED_FEAT      UC_BT_PBAC_SUPPORTED_FEAT
 #define BTC_PBA_PREFERRED_MTU       UC_BT_PBAC_PREFERRED_MTU
 #define BTA_PBA_CLIENT_INCLUDED     TRUE
+#endif
+
+#if UC_BT_PAN_ENABLED
+#define BTC_PAN_INCLUDED            TRUE
+#define BTA_PAN_INCLUDED            TRUE
+#define PAN_INCLUDED                TRUE
+#define BNEP_INCLUDED               TRUE
+#define PAN_SUPPORTS_ROLE_PANU      TRUE
+#define PAN_SUPPORTS_ROLE_GN        TRUE
+#define PAN_SUPPORTS_ROLE_NAP       TRUE
+#endif
+
+#if UC_BT_OPP_ENABLED && (UC_BT_OPP_SERVER_ENABLED || UC_BT_OPP_CLIENT_ENABLED)
+#ifndef RFCOMM_INCLUDED
+#define RFCOMM_INCLUDED             TRUE
+#endif
+#ifndef OBEX_INCLUDED
+#define OBEX_INCLUDED               TRUE
+#endif
+#define BTC_OPP_INCLUDED            TRUE
+#define BTA_OPP_INCLUDED            TRUE
+#endif
+
+#if UC_BT_OPP_SERVER_ENABLED
+#define BTA_OPP_SERVER_INCLUDED     TRUE
+#define BTC_OPP_SERVER_INCLUDED     TRUE
+#endif
+
+#if UC_BT_OPP_CLIENT_ENABLED
+#define BTA_OPP_CLIENT_INCLUDED     TRUE
+#define BTC_OPP_CLIENT_INCLUDED     TRUE
 #endif
 
 #endif /* UC_BT_CLASSIC_ENABLED */
@@ -257,6 +294,34 @@
 #define BLE_PERIPH_PSEUDO_ADDR_BOND   TRUE
 #else
 #define BLE_PERIPH_PSEUDO_ADDR_BOND   FALSE
+#endif
+
+/* Refuse a re-pairing that would end up weaker than the bond it replaces. */
+#if (UC_BT_BLE_SMP_HARDENED_REPAIRING == TRUE)
+#define BLE_SMP_HARDENED_REPAIRING    TRUE
+#else
+#define BLE_SMP_HARDENED_REPAIRING    FALSE
+#endif
+
+/* Erase the NVS bond when pairing/encryption fails while local device is Central. */
+#if (UC_BT_BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL == TRUE)
+#define BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL TRUE
+#else
+#define BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL FALSE
+#endif
+
+/* Erase the NVS bond when pairing/encryption fails while local device is Peripheral. */
+#if (UC_BT_BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_PERIPHERAL == TRUE)
+#define BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_PERIPHERAL TRUE
+#else
+#define BLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_PERIPHERAL FALSE
+#endif
+
+/* Discard the local LE keys when the peer rejects encryption with "PIN or Key Missing". */
+#if (UC_BT_BLE_SMP_UNBOND_ON_KEY_MISSING == TRUE)
+#define BLE_SMP_UNBOND_ON_KEY_MISSING TRUE
+#else
+#define BLE_SMP_UNBOND_ON_KEY_MISSING FALSE
 #endif
 
 #if (UC_BT_BLE_ENABLED ==TRUE)
@@ -583,6 +648,13 @@
 #define BLE_PRIVACY_SPT             FALSE
 #endif  /* UC_BT_SMP_ENABLE */
 
+/* CTKD: BR↔LE key derivation via SMP over BR (CID 7) and LE LK bit. */
+#if (UC_BT_SMP_CTKD_ENABLE && (CLASSIC_BT_INCLUDED == TRUE) && (BLE_INCLUDED == TRUE) && (SMP_INCLUDED == TRUE))
+#define SMP_CTKD_INCLUDED           TRUE
+#else
+#define SMP_CTKD_INCLUDED           FALSE
+#endif
+
 #if(UC_BT_SMP_SLAVE_CON_PARAMS_UPD_ENABLE)
 #define SMP_SLAVE_CON_PARAMS_UPD_ENABLE     TRUE
 #else
@@ -714,6 +786,14 @@
 
 #ifndef BTC_SPP_INCLUDED
 #define BTC_SPP_INCLUDED FALSE
+#endif
+
+#ifndef BTC_PAN_INCLUDED
+#define BTC_PAN_INCLUDED FALSE
+#endif
+
+#ifndef BTA_PAN_INCLUDED
+#define BTA_PAN_INCLUDED FALSE
 #endif
 
 #ifndef BTC_HH_INCLUDED
@@ -1175,6 +1255,20 @@
 #define BTM_MSBC_FRAME_DATA_SIZE          57
 #endif
 
+/* LC3-SWB eSCO air frame (H2 + payload); same 60-byte eSCO packet as mSBC */
+#ifndef BTM_LC3_FRAME_SIZE
+#define BTM_LC3_FRAME_SIZE                  60
+#endif
+
+#ifndef BTM_LC3_FRAME_DATA_SIZE
+#define BTM_LC3_FRAME_DATA_SIZE             58
+#endif
+
+/* Transparent wideband air frame size (mSBC and LC3-SWB) */
+#ifndef BTM_HFP_TRANSPARENT_FRAME_SIZE
+#define BTM_HFP_TRANSPARENT_FRAME_SIZE      BTM_MSBC_FRAME_SIZE
+#endif
+
 /* The size in bytes of the BTM inquiry database. 5 As Default */
 #ifndef BTM_INQ_DB_SIZE
 #define BTM_INQ_DB_SIZE             5
@@ -1292,6 +1386,22 @@
 #define BTM_PBA_SEC_SERVICE_RECORDS 0
 #endif
 
+#if BTA_PAN_INCLUDED
+#define BTM_PAN_SEC_SERVICE_RECORDS 6
+#else
+#define BTM_PAN_SEC_SERVICE_RECORDS 0
+#endif
+
+#if BTA_OPP_SERVER_INCLUDED && BTA_OPP_CLIENT_INCLUDED
+#define BTM_OPP_SEC_SERVICE_RECORDS 4
+#elif BTA_OPP_SERVER_INCLUDED
+#define BTM_OPP_SEC_SERVICE_RECORDS 3
+#elif BTA_OPP_CLIENT_INCLUDED
+#define BTM_OPP_SEC_SERVICE_RECORDS 1
+#else
+#define BTM_OPP_SEC_SERVICE_RECORDS 0
+#endif
+
 #if BTA_AV_CA_INCLUDED
 #define BTM_AC_VA_SEC_SERVICE_RECORDS 1
 #else
@@ -1350,7 +1460,7 @@
    + BTM_AVCT_SEC_SERVICE_RECORDS + BTM_AVDT_SEC_SERVICE_RECORDS + BTM_GAP_SEC_SERVICE_RECORDS    \
    + BTM_HIDD_SEC_SERVICE_RECORDS  + BTM_GATT_SEC_SERVICE_RECORDS + BTM_PBA_SEC_SERVICE_RECORDS   \
    + BTM_HIDH_SEC_SERVICE_RECORDS + BTM_SEC_DEV_SERVICE_RECORDS + BTM_HF_SEC_SERVICE_RECORDS      \
-   + BTM_JV_SEC_SERVICE_RECORDS + BTM_AC_VA_SEC_SERVICE_RECORDS )
+   + BTM_JV_SEC_SERVICE_RECORDS + BTM_PAN_SEC_SERVICE_RECORDS + BTM_AC_VA_SEC_SERVICE_RECORDS + BTM_OPP_SEC_SERVICE_RECORDS )
 #endif
 
 /* If True, force a retrieval of remote device name for each bond in case it's changed */
@@ -2346,6 +2456,16 @@
 #define GOEPC_MAX_CONNECTION              3
 #endif
 
+/* Maximum GOEP server listener allowed */
+#ifndef GOEPS_MAX_SERVER
+#define GOEPS_MAX_SERVER                  OBEX_MAX_SERVER
+#endif
+
+/* Maximum GOEP server connection allowed */
+#ifndef GOEPS_MAX_CONNECTION
+#define GOEPS_MAX_CONNECTION              OBEX_MAX_CONNECTION
+#endif
+
 /******************************************************************************
 **
 ** BNEP
@@ -2429,6 +2549,11 @@
 /* Number of simultaneous stream endpoints. */
 #ifndef AVDT_NUM_SEPS
 #define AVDT_NUM_SEPS               UC_BT_A2DP_SEP_NUM_MAX
+#endif
+
+/* Maximum number of peer SEPs accepted in AVDTP Discover results. */
+#ifndef AVDT_DIS_RES_MAX_NUM_SEPS
+#define AVDT_DIS_RES_MAX_NUM_SEPS    32
 #endif
 
 /* Number of transport channels setup per media stream(audio or video) */
@@ -2684,6 +2809,34 @@
 */
 #ifndef GOEPC_INCLUDED
 #define GOEPC_INCLUDED            FALSE
+#endif
+
+#ifndef GOEPS_INCLUDED
+#define GOEPS_INCLUDED            FALSE
+#endif
+
+#ifndef BTC_OPP_INCLUDED
+#define BTC_OPP_INCLUDED          FALSE
+#endif
+
+#ifndef BTA_OPP_INCLUDED
+#define BTA_OPP_INCLUDED          FALSE
+#endif
+
+#ifndef BTA_OPP_SERVER_INCLUDED
+#define BTA_OPP_SERVER_INCLUDED   FALSE
+#endif
+
+#ifndef BTA_OPP_CLIENT_INCLUDED
+#define BTA_OPP_CLIENT_INCLUDED   FALSE
+#endif
+
+#ifndef BTC_OPP_SERVER_INCLUDED
+#define BTC_OPP_SERVER_INCLUDED   FALSE
+#endif
+
+#ifndef BTC_OPP_CLIENT_INCLUDED
+#define BTC_OPP_CLIENT_INCLUDED   FALSE
 #endif
 
 /*************************************************************************

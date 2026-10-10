@@ -10,7 +10,7 @@ JPEG 常用于数字图像，尤其是数码摄影图像的有损压缩。压缩
 
 {IDF_TARGET_NAME} 的 JPEG 编解码器是一种基于 JPEG 基线标准的图像编解码器，可以压缩和解压缩图像，从而降低传输图像所需的带宽或存储图像所需的空间，可以处理高分辨率的图像。但请注意，编解码器引擎不能同时作为编码器和解码器工作。
 
-关于更多 JPEG 编解码器的硬件特性，请参考 {IDF_TARGET_NAME} 技术参考手册中的 `JPEG 编解码器 <{IDF_TARGET_TRM_EN_URL}#jpegcodec>`__ 章节，了解更多详情。
+关于更多 JPEG 编解码器的硬件特性，请参考 {IDF_TARGET_NAME} 技术参考手册中的 `JPEG 编解码器 <{IDF_TARGET_TRM_CN_URL}#jpegcodec>`__ 章节，了解更多详情。
 
 功能概述
 --------
@@ -565,7 +565,7 @@ YUV420
 电源管理
 ^^^^^^^^
 
-当启用电源管理（即设置了 :ref:`CONFIG_PM_ENABLE`）时，系统需要调整或停止 JPEG 的源时钟以进入 Light-sleep 模式，这可能会改变 JPEG 解码器/编码器的处理过程，也可能会导致硬件计算出现意外。为防止以上问题出现，当 JPEG 编码器/解码器工作时，无法进入 Light-sleep 模式。
+当启用电源管理（即设置了 :menuitem:`CONFIG_PM_ENABLE`）时，系统需要调整或停止 JPEG 的源时钟以进入 Light-sleep 模式，这可能会改变 JPEG 解码器/编码器的处理过程，也可能会导致硬件计算出现意外。为防止以上问题出现，当 JPEG 编码器/解码器工作时，无法进入 Light-sleep 模式。
 
 每当用户通过 JPEG 进行解码或编码（即调用 :cpp:func:`jpeg_encoder_process` 或 :cpp:func:`jpeg_decoder_process`）时，驱动程序会将电源管理设定为 :cpp:enumerator:`esp_pm_lock_type_t::ESP_PM_CPU_FREQ_MAX`，确保获取电源管理锁。一旦编码或解码完成，驱动程序将释放锁，则系统可以进入 Light-sleep 模式。
 
@@ -591,7 +591,7 @@ JPEG 编解码器通过 2D-DMA 搬运数据，而 JPEG 编解码器 **无法处�
 
 Kconfig 选项
 ^^^^^^^^^^^^
-- :ref:`CONFIG_JPEG_ENABLE_DEBUG_LOG` 可启用调试日志，但会增加固件二进制大小。
+- :menuitem:`CONFIG_JPEG_ENABLE_DEBUG_LOG` 可启用调试日志，但会增加固件二进制大小。
 
 
 维护者须知

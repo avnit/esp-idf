@@ -134,7 +134,7 @@ When no ``*_flashed.bin`` files are present, ``idf.py flash`` configures esptool
 
 After each successful flash, the build system saves copies of all flashed files (bootloader, partition table, app, and any other assets) with an ``_flashed`` suffix in the build directory (e.g., ``bootloader_flashed.bin``, ``partition-table_flashed.bin``). These are used automatically on the next ``idf.py flash`` for fast reflashing.
 
-Fast reflashing works with or without the :ref:`CONFIG_APP_BUILD_MINIMIZE_BINARY_CHANGES` option. Enabling that option can further improve reflash effectiveness by laying out the application binary so that changes are localized. This results in less flash sectors needing to be rewritten. This option may increase the size of the application binary and is not recommended for production builds.
+Fast reflashing works with or without the :menuitem:`CONFIG_APP_BUILD_MINIMIZE_BINARY_CHANGES` option. Enabling that option can further improve reflash effectiveness by laying out the application binary so that changes are localized. This results in less flash sectors needing to be rewritten. This option may increase the size of the application binary and is not recommended for production builds.
 
 Full Flash
 ^^^^^^^^^^
@@ -327,6 +327,10 @@ To use the MCP server with an AI assistant, configure your agent or IDE to start
 
     The MCP server requires the ``mcp`` feature to be installed. Install it using the EIM installer. See `EIM documentation > CLI Configuration - Global features <https://docs.espressif.com/projects/idf-im-ui/en/latest/cli_configuration.html#global-features-all-versions>`_ for how to install specific features.
 
+.. note::
+
+    ``mcp-server`` uses stdout for the MCP JSON-RPC transport. ``idf.py`` does not print its usual informational messages (such as ``Executing action:``) when this command is used. To keep stdout from being polluted, this command cannot be combined with other ``idf.py`` commands.
+
 Available Tools and Resources
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -337,14 +341,24 @@ The MCP server provides the following tools:
 - ``flash project``: Flash the built project to a connected device. Specify it by port name
 - ``clean project``: Clean build artifacts
 - ``create project``: Create a new ESP-IDF project from the sample template. Can be used before any project exists
+- ``monitor device``: Run a scripted serial monitor session against a flashed device and wait for expected output. See :ref:`mcp-monitor-device`
 
-All tools accept an optional ``project_dir`` argument. When omitted, the tool operates on the directory configured at startup (``-C`` flag or ``IDF_MCP_WORKSPACE_FOLDER``). You can instruct the AI model to use a specific project directory explicitly, for example when working with multiple projects or when no default project was configured at startup.
+The project tools accept an optional ``project_dir`` argument. When omitted, the tool operates on the directory configured at startup (``-C`` flag or ``IDF_MCP_WORKSPACE_FOLDER``). You can instruct the AI model to use a specific project directory explicitly, for example when working with multiple projects or when no default project was configured at startup. The ``create project`` and ``monitor device`` tools are the exception: the former takes the parent ``path`` for the new project, and the latter talks to a device rather than to a project directory.
 
 The MCP server also provides these resources:
 
 - ``project://config``: Get current project configuration
 - ``project://status``: Get current project build status and artifacts
 - ``project://devices``: Get list of connected devices
+
+.. _mcp-monitor-device:
+
+Monitoring a Device
+^^^^^^^^^^^^^^^^^^^
+
+The ``monitor device`` tool lets an AI assistant observe what a flashed device prints. Ask in ordinary language, for example "flash it and check that the device prints ``Minimum free heap size`` within 30 seconds". The assistant waits for that output and then tells you whether it appeared.
+
+The full serial log is kept in a file. Ask the assistant to search that log if you want more detail than the short status it reports.
 
 Adding ESP-IDF MCP Server to IDEs and AI agents
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

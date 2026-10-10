@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -15,7 +15,6 @@
 #include <string.h>
 #include <stdlib.h> //for abs()
 #include "esp_types.h"
-#include "esp32/rom/lldesc.h"
 #include "soc/spi_reg.h"
 #include "soc/spi_struct.h"
 #include "soc/dport_reg.h"
@@ -1138,6 +1137,27 @@ static inline void spi_ll_dma_reset_register(spi_host_device_t host_id)
     } while(0)
 
 /**
+ * Connect DMA channel for SPI
+ *
+ * @param host_id   SPI host ID
+ * @param dma_chan  DMA channel ID
+ */
+static inline void spi_ll_dma_connect_host(spi_host_device_t host_id, int dma_chan)
+{
+    DPORT_SET_PERI_REG_BITS(DPORT_SPI_DMA_CHAN_SEL_REG, 3, dma_chan, (host_id * 2));
+}
+
+/**
+ * Disconnect DMA channel for SPI
+ *
+ * @param host_id   SPI host ID
+ */
+static inline void spi_ll_dma_disconnect_host(spi_host_device_t host_id)
+{
+    DPORT_SET_PERI_REG_BITS(DPORT_SPI_DMA_CHAN_SEL_REG, 3, 0, (host_id * 2));
+}
+
+/**
  * Reset RX DMA which stores the data received from a peripheral into RAM.
  *
  * @param dma_in  Beginning address of the DMA peripheral registers which stores the data received from a peripheral into RAM.
@@ -1159,7 +1179,7 @@ static inline void spi_ll_dma_rx_reset(spi_dma_dev_t *dma_in, uint32_t channel)
  * @param addr    Address of the beginning DMA descriptor.
  */
 __attribute__((always_inline))
-static inline void spi_ll_dma_rx_start(spi_dma_dev_t *dma_in, uint32_t channel, lldesc_t *addr)
+static inline void spi_ll_dma_rx_start(spi_dma_dev_t *dma_in, uint32_t channel, void *addr)
 {
     dma_in->dma_in_link.addr = (int) addr & 0xFFFFF;
     dma_in->dma_in_link.start = 1;
@@ -1224,7 +1244,7 @@ static inline void spi_ll_dma_tx_reset(spi_dma_dev_t *dma_out, uint32_t channel)
  * @param addr    Address of the beginning DMA descriptor.
  */
 __attribute__((always_inline))
-static inline void spi_ll_dma_tx_start(spi_dma_dev_t *dma_out, uint32_t channel, lldesc_t *addr)
+static inline void spi_ll_dma_tx_start(spi_dma_dev_t *dma_out, uint32_t channel, void *addr)
 {
     dma_out->dma_out_link.addr = (int) addr & 0xFFFFF;
     dma_out->dma_out_link.start = 1;
@@ -1301,7 +1321,6 @@ static inline int spi_ll_get_slave_hd_dummy_bits(spi_line_mode_t line_mode)
     return 0;
 }
 
-#undef SPI_LL_RST_MASK
 #undef SPI_LL_UNUSED_INT_MASK
 
 #ifdef __cplusplus

@@ -23,6 +23,10 @@ if(NOT non_os_build)
         list(APPEND srcs "src/esp_ds.c")
     endif()
 
+    if(CONFIG_SOC_SHA_SUPPORT_SM3)
+        list(APPEND srcs "src/esp_sm3.c")
+    endif()
+
     if(CONFIG_SOC_KEY_MANAGER_SUPPORTED)
         list(APPEND srcs "src/esp_key_mgr.c")
     endif()
@@ -40,10 +44,6 @@ elseif(esp_tee_build)
 
     if(CONFIG_SOC_HMAC_SUPPORTED)
         list(APPEND srcs "src/esp_hmac.c")
-    endif()
-
-    if(CONFIG_SOC_DIG_SIGN_SUPPORTED)
-        list(APPEND srcs "src/esp_ds.c")
     endif()
 else()  # BOOTLOADER_BUILD
     list(APPEND srcs "src/esp_crypto_lock.c" "src/esp_crypto_periph_clk.c"

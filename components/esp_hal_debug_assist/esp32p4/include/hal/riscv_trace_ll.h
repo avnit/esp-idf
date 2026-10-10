@@ -13,6 +13,7 @@
 #include "soc/trace_struct.h"
 #include "soc/hp_sys_clkrst_struct.h"
 #include "hal/assert.h"
+#include "hal/riscv_trace_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,6 +74,11 @@ static inline void riscv_trace_ll_set_mem_start_addr(trace_dev_t *hw, uint32_t a
     hw->mem_start_addr.mem_start_addr = addr;
 }
 
+static inline uint32_t riscv_trace_ll_get_mem_start_addr(trace_dev_t *hw)
+{
+    return hw->mem_start_addr.mem_start_addr;
+}
+
 static inline void riscv_trace_ll_set_mem_end_addr(trace_dev_t *hw, uint32_t addr)
 {
     hw->mem_end_addr.mem_end_addr = addr;
@@ -117,6 +123,11 @@ static inline void riscv_trace_ll_set_mem_loop(trace_dev_t *hw, bool loop)
     hw->trigger.mem_loop = loop;
 }
 
+static inline bool riscv_trace_ll_get_mem_loop(trace_dev_t *hw)
+{
+    return hw->trigger.mem_loop;
+}
+
 static inline void riscv_trace_ll_set_restart_ena(trace_dev_t *hw, bool enable)
 {
     hw->trigger.restart_ena = enable;
@@ -129,6 +140,11 @@ static inline void riscv_trace_ll_set_restart_ena(trace_dev_t *hw, bool enable)
 static inline void riscv_trace_ll_set_full_address(trace_dev_t *hw, bool full)
 {
     hw->config.full_address = full;
+}
+
+static inline bool riscv_trace_ll_get_full_address(trace_dev_t *hw)
+{
+    return hw->config.full_address;
 }
 
 static inline void riscv_trace_ll_set_stall_ena(trace_dev_t *hw, bool enable)
@@ -155,14 +171,31 @@ static inline void riscv_trace_ll_set_dm_trigger_ena(trace_dev_t *hw, bool enabl
  * Resynchronization
  *--------------------------------------------------------------------------*/
 
+/** @brief Whether the resync counter can represent the given mode. */
+static inline bool riscv_trace_ll_resync_mode_is_supported(uint32_t mode)
+{
+    return mode == RISCV_TRACE_RESYNC_DISABLED || mode == RISCV_TRACE_RESYNC_PACKET ||
+           mode == RISCV_TRACE_RESYNC_CYCLE;
+}
+
 static inline void riscv_trace_ll_set_resync_mode(trace_dev_t *hw, uint32_t mode)
 {
     hw->resync_prolonged.resync_mode = mode;
 }
 
+static inline uint32_t riscv_trace_ll_get_resync_mode(trace_dev_t *hw)
+{
+    return hw->resync_prolonged.resync_mode;
+}
+
 static inline void riscv_trace_ll_set_resync_threshold(trace_dev_t *hw, uint32_t threshold)
 {
     hw->resync_prolonged.resync_prolonged = threshold;
+}
+
+static inline uint32_t riscv_trace_ll_get_resync_threshold(trace_dev_t *hw)
+{
+    return hw->resync_prolonged.resync_prolonged;
 }
 
 /*---------------------------------------------------------------------------
@@ -217,10 +250,15 @@ static inline void riscv_trace_ll_set_filter_control(trace_dev_t *hw, bool match
     hw->filter_control.match_interrupt = match_interrupt;
 }
 
-static inline void riscv_trace_ll_set_filter_match_control(trace_dev_t *hw, bool priv_choice,
+static inline bool riscv_trace_ll_priv_is_supported(uint32_t priv)
+{
+    return priv == RISCV_TRACE_PRIV_USER || priv == RISCV_TRACE_PRIV_MACHINE;
+}
+
+static inline void riscv_trace_ll_set_filter_match_control(trace_dev_t *hw, uint32_t priv_choice,
                                                            bool intr_value, uint32_t ecause_choice)
 {
-    hw->filter_match_control.match_choice_privilege = priv_choice;
+    hw->filter_match_control.match_choice_privilege = (priv_choice == RISCV_TRACE_PRIV_MACHINE);
     hw->filter_match_control.match_value_interrupt = intr_value;
     hw->filter_match_control.match_choice_ecause = ecause_choice;
 }

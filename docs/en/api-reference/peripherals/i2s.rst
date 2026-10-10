@@ -258,7 +258,7 @@ The public APIs are all channel-level APIs. The channel handle :cpp:type:`i2s_ch
 Power Management
 ^^^^^^^^^^^^^^^^
 
-When the power management is enabled (i.e., :ref:`CONFIG_PM_ENABLE` is on), the system will adjust or stop the source clock of I2S before entering Light-sleep, thus potentially changing the I2S signals and leading to transmitting or receiving invalid data.
+When the power management is enabled (i.e., :menuitem:`CONFIG_PM_ENABLE` is on), the system will adjust or stop the source clock of I2S before entering Light-sleep, thus potentially changing the I2S signals and leading to transmitting or receiving invalid data.
 
 The I2S driver can prevent the system from changing or stopping the source clock by acquiring a power management lock. When the source clock is generated from APB, the lock type will be set to :cpp:enumerator:`esp_pm_lock_type_t::ESP_PM_APB_FREQ_MAX` and when the source clock is APLL (if supported), it will be set to :cpp:enumerator:`esp_pm_lock_type_t::ESP_PM_NO_LIGHT_SLEEP`. The driver guarantees that the power management lock is acquired when the channel is enabled by :cpp:func:`i2s_channel_enable`. Likewise, the driver releases the lock when the channel is disabled by :cpp:func:`i2s_channel_disable`, which keeps the I2S source clock stable while the channel is running.
 
@@ -290,6 +290,12 @@ Data Transport
 The data transport of the I2S peripheral, including sending and receiving, is realized by DMA. Before transporting data, please call :cpp:func:`i2s_channel_enable` to enable the specific channel. When the sent or received data reaches the size of one DMA buffer, the ``I2S_OUT_EOF`` or ``I2S_IN_SUC_EOF`` interrupt will be triggered. Note that the DMA buffer size is not equal to :cpp:member:`i2s_chan_config_t::dma_frame_num`. One frame here refers to all the sampled data in one WS circle. Therefore, ``dma_buffer_size = dma_frame_num * slot_num * slot_bit_width / 8``. For the data transmitting, users can input the data by calling :cpp:func:`i2s_channel_write`. This function helps users to copy the data from the source buffer to the DMA TX buffer and wait for the transmission to finish. Then it will repeat until the sent bytes reach the given size. For the data receiving, the function :cpp:func:`i2s_channel_read` waits to receive the message queue which contains the DMA buffer address. It helps users copy the data from the DMA RX buffer to the destination buffer.
 
 Both :cpp:func:`i2s_channel_write` and :cpp:func:`i2s_channel_read` are blocking functions. They keeps waiting until the whole source buffer is sent or the whole destination buffer is loaded, unless they exceed the max blocking time, where the error code ``ESP_ERR_TIMEOUT`` returns. To send or receive data asynchronously, callbacks can be registered by  :cpp:func:`i2s_channel_register_event_callback`. Users are able to access the DMA buffer directly in the callback function instead of transmitting or receiving by the two blocking functions. However, please be aware that it is an interrupt callback, so do not add complex logic, run floating operation, or call non-reentrant functions in the callback.
+
+:cpp:member:`i2s_chan_config_t::dma_burst_size` sets the DMA burst size in bytes. Set it to ``0`` (the value used by :c:macro:`I2S_CHANNEL_DEFAULT_CONFIG`) to apply the driver default of 32 bytes. A non-zero value must be a power of 2 supported by the chip GDMA. The field is ignored on chips that do not support configurable DMA burst size.
+
+.. only:: SOC_PSRAM_DMA_CAPABLE
+
+    To reduce internal RAM usage, set :cpp:member:`i2s_chan_config_t::dma_buffer_in_psram` to allocate the driver-owned DMA buffers in PSRAM. DMA descriptors remain in internal RAM. The driver returns an error if PSRAM DMA is unavailable or the allocation fails; it does not fall back to internal RAM. When :ref:`CONFIG_I2S_ISR_IRAM_SAFE` is enabled, TX auto-clear cannot be used with PSRAM DMA buffers, and callbacks must not access the DMA buffer while the cache is disabled.
 
 .. only:: SOC_I2S_SUPPORTS_BT_DEST
 
@@ -416,7 +422,7 @@ IRAM Safe
 
 By default, the I2S interrupt will be deferred when the cache is disabled for reasons like writing/erasing flash. Thus the EOF interrupt will not get executed in time.
 
-To avoid such case in real-time applications, you can enable the Kconfig option :ref:`CONFIG_I2S_ISR_IRAM_SAFE` that:
+To avoid such case in real-time applications, you can enable the Kconfig option :menuitem:`CONFIG_I2S_ISR_IRAM_SAFE` that:
 
 1. Keeps the interrupt being serviced even when the cache is disabled.
 
@@ -432,8 +438,8 @@ All the public I2S APIs are guaranteed to be thread safe by the driver, which me
 Kconfig Options
 ^^^^^^^^^^^^^^^
 
-- :ref:`CONFIG_I2S_ISR_IRAM_SAFE` controls whether the default ISR handler can work when the cache is disabled. See :ref:`i2s-iram-safe` for more information.
-- :ref:`CONFIG_I2S_ENABLE_DEBUG_LOG` is used to enable the debug log output. Enable this option increases the firmware binary size.
+- :menuitem:`CONFIG_I2S_ISR_IRAM_SAFE` controls whether the default ISR handler can work when the cache is disabled. See :ref:`i2s-iram-safe` for more information.
+- :menuitem:`CONFIG_I2S_ENABLE_DEBUG_LOG` is used to enable the debug log output. Enable this option increases the firmware binary size.
 
 Application Example
 -------------------
@@ -443,8 +449,9 @@ The examples of the I2S driver can be found in the directory :example:`periphera
 Standard TX/RX Usage
 ^^^^^^^^^^^^^^^^^^^^
 
-- :example:`peripherals/i2s/i2s_codec/i2s_es8311` demonstrates how to use the I2S ES8311 audio codec with {IDF_TARGET_NAME} to play music or echo sounds, featuring high performance and low power multi-bit delta-sigma audio ADC and DAC, with options to customize music and adjust mic gain and volume.
+- :example:`peripherals/i2s/wav_player` demonstrates how to play an embedded WAV file through I2S STD TX to an ES8311 or ES8389 codec DAC on {IDF_TARGET_NAME}.
 - :example:`peripherals/i2s/i2s_basic/i2s_std` demonstrates how to use the I2S standard mode in either simplex or full-duplex mode on {IDF_TARGET_NAME}.
+- :example:`peripherals/i2s/mic_recorder` demonstrates how to record audio from an analog microphone connected to an ES8389 codec through the I2S STD interface.
 
 Different slot communication formats can be generated by the following helper macros for standard mode. As described above, there are three formats in standard mode, and their helper macros are:
 
@@ -804,7 +811,7 @@ Here is the table of the data received in the buffer with different :cpp:member:
     PDM RX Usage
     ^^^^^^^^^^^^
 
-    - :example:`peripherals/i2s/i2s_recorder` demonstrates how to record audio from a digital MEMS microphone using the I2S peripheral in PDM data format and save it to an SD card in ``.wav`` file format on {IDF_TARGET_NAME} development boards.
+    - :example:`peripherals/i2s/mic_recorder` demonstrates how to record audio from either PDM digital MEMS microphones (using the I2S PDM RX mode) or an analog microphone through an ES8389 codec, and streams the recorded PCM data over the console so that the ``.wav`` file can be reconstructed on the host PC.
     - :example:`peripherals/i2s/i2s_basic/i2s_pdm` demonstrates how to use the PDM RX mode on {IDF_TARGET_NAME}, including the necessary hardware setup and configuration.
 
     For PDM mode in RX channel, the slot configuration helper macro are:

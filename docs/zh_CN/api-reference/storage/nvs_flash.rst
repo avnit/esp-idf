@@ -21,7 +21,7 @@ NVS 使用分区表中类型为 ``data``、子类型为 ``nvs`` 的分区。该�
 
 .. note::
 
-    启用 :ref:`CONFIG_NVS_BDL_STACK` 后，NVS 也可以通过块设备层 (BDL) 运行，从而支持标准 flash 分区以外的其他存储后端。在 BDL 模式下，:cpp:func:`nvs_flash_init_partition_ptr` 不可用，但 :cpp:func:`nvs_flash_init_partition_bdl` 可用于自定义块设备初始化。详情见 :ref:`nvs_internals` > :ref:`nvs_underlying_storage`。
+    启用 :menuitem:`CONFIG_NVS_BDL_STACK` 后，NVS 也可以通过块设备层 (BDL) 运行，从而支持标准 flash 分区以外的其他存储后端。在 BDL 模式下，:cpp:func:`nvs_flash_init_partition_ptr` 不可用，但 :cpp:func:`nvs_flash_init_partition_bdl` 可用于自定义块设备初始化。详情见 :ref:`nvs_internals` > :ref:`nvs_underlying_storage`。
 
 .. note::
 
@@ -76,7 +76,7 @@ NVS 的操作对象为键值对，其中键是 ASCII 字符串，当前支持的
 
 为减少不同组件之间键名的潜在冲突，NVS 将每个键值对分配到一个命名空间。命名空间的命名规则遵循键名的命名规则，例如，最多可占 15 个字符。此外，单个 NVS 分区最多只能容纳 254 个不同的命名空间。命名空间的名称在调用 :cpp:func:`nvs_open` 或 :cpp:type:`nvs_open_from_partition` 中指定。调用后将返回一个不透明句柄，用于后续调用 ``nvs_get_*``、``nvs_set_*`` 和 :cpp:func:`nvs_commit` 函数。这样，句柄就与命名空间和分区关联，键名不会与其他命名空间中的同名键发生冲突。
 
-open mode 参数控制访问级别和安全行为：
+``open_mode`` 参数控制访问级别和安全行为：
 
 - ``NVS_READONLY``：只读访问权限。所有写操作将被拒绝。
 - ``NVS_READWRITE``：标准读写访问权限。被擦除的数据会被标记为已删除，但仍保留在 flash 中。
@@ -85,6 +85,22 @@ open mode 参数控制访问级别和安全行为：
 .. note::
 
     在不同的 NVS 分区中，同名的命名空间被视为相互独立的命名空间。
+
+C++ API
+^^^^^^^
+
+除上文所述的 C API 外，NVS 还在 :component_file:`nvs_flash/include/nvs_handle.hpp` 中提供了 C++ 类接口（命名空间 ``nvs``）。
+
+使用 ``nvs::open_nvs_handle()`` 或 ``nvs::open_nvs_handle_from_partition()`` 打开命名空间。这些函数返回 ``std::unique_ptr<nvs::NVSHandle>``。当该 ``std::unique_ptr`` 被销毁时，句柄会自动关闭（RAII），因此无需另行调用关闭函数。
+
+``nvs::NVSHandle`` 提供与 C API 对应的方法，包括：
+
+- ``set_item`` / ``get_item`` — 面向整型、浮点型和枚举类型的类型化读写
+- ``set_string`` / ``get_string`` — 字符串值
+- ``set_blob`` / ``get_blob`` — 二进制 blob 值
+- ``commit``、``erase_item``、``erase_all``、``purge_all``、``find_key`` 及相关辅助方法
+
+``open_mode`` 的取值（ ``NVS_READONLY``、``NVS_READWRITE``、``NVS_READWRITE_PURGE``）以及键名和命名空间约束与 C API 相同。完整的类与函数说明见下文 :ref:`API 参考 <nvs-api-reference>`，完整示例见 :example:`storage/nvs/nvs_rw_value_cxx`。
 
 NVS 迭代器
 ^^^^^^^^^^^^^
@@ -167,9 +183,9 @@ NVS 中的大量数据
 
     默认情况下，内部 NVS 会在内部 RAM 中分配堆内存。对于较大的 NVS 分区或大量键，应用程序可能仅因 NVS 的开销就耗尽内部 RAM 的堆内存。
 
-    如果应用程序所使用的模组配备了通过 SPI 连接的 PSRAM，则可通过启用 Kconfig 选项 :ref:`CONFIG_NVS_ALLOCATE_CACHE_IN_SPIRAM` 来克服这一限制。该选项会将 RAM 分配重定向到通过 SPI 连接的 PSRAM。
+    如果应用程序所使用的模组配备了通过 SPI 连接的 PSRAM，则可通过启用 Kconfig 选项 :menuitem:`CONFIG_NVS_ALLOCATE_CACHE_IN_SPIRAM` 来克服这一限制。该选项会将 RAM 分配重定向到通过 SPI 连接的 PSRAM。
 
-    当启用 SPIRAM 且 :ref:`CONFIG_SPIRAM_USE` 设为 ``CONFIG_SPIRAM_USE_CAPS_ALLOC`` 时，此选项可在 menuconfig 菜单的 nvs_flash 组件中使用。
+    当启用 SPIRAM 且 :menuitem:`CONFIG_SPIRAM_USE` 设为 ``CONFIG_SPIRAM_USE_CAPS_ALLOC`` 时，此选项可在 menuconfig 菜单的 nvs_flash 组件中使用。
 
     .. note::
 
@@ -180,7 +196,7 @@ NVS 中的大量数据
 
 当 NVS 用于弱电源或不稳定电源系统（如太阳能或电池供电系统）时，flash 擦除操作可能偶尔无法彻底完成，而应用程序无法检测到这一问题。这会导致实际 flash 内容与预留页面的预期布局不一致。在极少数情况下（特别是在意外断电时），可能造成可用 NVS 页面耗尽，导致分区初始化失败并返回 ``ESP_ERR_NVS_NO_FREE_PAGES`` 错误。
 
-为解决此问题，可通过 Kconfig 选项 :ref:`CONFIG_NVS_FLASH_VERIFY_ERASE` 启用 flash 擦除操作的验证机制，通过回读受影响页面进行检测。若在 ``flash_erase`` 操作后页面未完全擦除为 ``0xFF``，系统将重试擦除操作直至页面被正确清空。包括首次尝试在内的擦除尝试总次数可通过 Kconfig 选项 :ref:`CONFIG_NVS_FLASH_ERASE_ATTEMPTS` 进行配置。
+为解决此问题，可通过 Kconfig 选项 :menuitem:`CONFIG_NVS_FLASH_VERIFY_ERASE` 启用 flash 擦除操作的验证机制，通过回读受影响页面进行检测。若在 ``flash_erase`` 操作后页面未完全擦除为 ``0xFF``，系统将重试擦除操作直至页面被正确清空。包括首次尝试在内的擦除尝试总次数可通过 Kconfig 选项 :menuitem:`CONFIG_NVS_FLASH_ERASE_ATTEMPTS` 进行配置。
 
 .. note::
 
@@ -264,7 +280,7 @@ ESP-IDF :example:`storage/nvs` 目录下提供了数个代码示例：
 
 :example:`storage/nvs/nvs_rw_value_cxx`
 
-  这个例子与 :example:`storage/nvs/nvs_rw_value` 完全一样，只是使用了 C++ 的 NVS 句柄类。
+  这个例子与 :example:`storage/nvs/nvs_rw_value` 完全一样，只是使用了 C++ 的 NVS 句柄类（通过 ``nvs::open_nvs_handle()`` 获取 ``nvs::NVSHandle``）。
 
 :example:`storage/nvs/nvs_statistics`
 
@@ -526,7 +542,7 @@ NVS 正常运行所需的默认最小空间为 12 KiB (``0x3000``)，即至少�
 底层存储
 ^^^^^^^^^^^^^^^^^^
 
-在构建时，可以配置 NVS 访问其底层存储的模式。menuconfig 选项 :ref:`CONFIG_NVS_BDL_STACK` 提供了两种模式。
+在构建时，可以配置 NVS 访问其底层存储的模式。menuconfig 选项 :menuitem:`CONFIG_NVS_BDL_STACK` 提供了两种模式。
 
 **ESP 分区 API（默认）**：NVS 使用 :ref:`esp_partition <flash-partition-apis>` 访问存储。这是默认运行模式，其中 NVS 使用由分区表定义的 SPI flash 分区。在此模式下：
 
@@ -552,9 +568,13 @@ NVS 正常运行所需的默认最小空间为 12 KiB (``0x3000``)，即至少�
 
 
 
+.. _nvs-api-reference:
+
 API 参考
 -------------
 
 .. include-build-file:: inc/nvs_flash.inc
 
 .. include-build-file:: inc/nvs.inc
+
+.. include-build-file:: inc/nvs_handle.inc

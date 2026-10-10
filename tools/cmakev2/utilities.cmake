@@ -7,6 +7,10 @@
 # used by toolchain CMake files.
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/deduplicate_flags.cmake)
 
+# __compiler_query is shared with cmakev1. The esp_common and xtensa
+# project_include.cmake files that call it are used by both build systems.
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/compiler_query.cmake)
+
 # Note: CMake does not support nested lists. The functions idf_die, idf_warn,
 # idf_msg, and idf_dbg use ARGV# values because this is the only way to prevent
 # arguments from being altered by CMake. ARGV and ARGN contain a flattened list
@@ -1264,12 +1268,17 @@ function(__preprocess_linker_script script_in script_out flags component_include
         # ld.common file, so add the parent directory to the C preprocessor
         # search path. Works for that layout; a component with a different
         # layout, or one that must drop -C, should pass FLAGS instead.
+        # esp_system/ld is added as well so that scripts of other components
+        # can include the shared fragments living there (e.g.
+        # ld.elf.internal.sections).
         set(base_flags "-C")
         get_filename_component(script_parent_dir "${script_in}" DIRECTORY)
         get_filename_component(script_parent_name "${script_parent_dir}" NAME)
         if(script_parent_name STREQUAL idf_target)
             get_filename_component(dir_to_include "${script_parent_dir}" DIRECTORY)
-            string(APPEND base_flags " -I\"${dir_to_include}\"")
+            idf_component_get_property(esp_system_dir esp_system COMPONENT_DIR)
+            string(APPEND base_flags
+                   " -I\"${dir_to_include}\" -I\"${esp_system_dir}/ld\"")
         endif()
     else()
         # Explicit FLAGS replace the whole default set, including -C. config_dir
@@ -1279,16 +1288,25 @@ function(__preprocess_linker_script script_in script_out flags component_include
 
     set(linker_script_generator "${idf_path}/tools/cmake/linker_script_preprocessor.cmake")
 
+    # -MD -MF -MT makes the C preprocessor record every file it reads (the
+    # template plus everything it #includes, transitively) into a depfile, so
+    # the output is regenerated when any of them changes. MAIN_DEPENDENCY and
+    # DEPENDS only cover the top-level script and sdkconfig; the depfile closes
+    # the gap for includes the build system cannot enumerate up front.
+    set(depfile "${script_out}.d")
+    set(depfile_flags "-MD -MF \"${depfile}\" -MT \"${script_out}\"")
+
     add_custom_command(
         OUTPUT ${script_out}
         COMMAND ${CMAKE_COMMAND}
             "-DCC=${CMAKE_C_COMPILER}"
             "-DSOURCE=${script_in}"
             "-DTARGET=${script_out}"
-            "-DCFLAGS=-I\"${config_dir}\" ${base_flags} ${component_includes}"
+            "-DCFLAGS=-I\"${config_dir}\" ${depfile_flags} ${base_flags} ${component_includes}"
             -P "${linker_script_generator}"
         MAIN_DEPENDENCY "${script_in}"
         DEPENDS "${sdkconfig_header}"
+        DEPFILE "${depfile}"
         COMMENT "Preprocessing linker script ${script_in} -> ${script_out}"
         VERBATIM)
 endfunction()

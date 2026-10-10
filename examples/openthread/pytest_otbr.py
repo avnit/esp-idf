@@ -100,8 +100,9 @@ PORT_MAPPING = {
     'ESPPORT2': 'esp32s3',
     'ESPPORT3': 'esp32c6',
     'ESPPORT4': 'esp32c5',
+    'ESPPORT5': 'esp32s31',
 }
-ESPPORT1, ESPPORT2, ESPPORT3, ESPPORT4 = (os.getenv(name) for name in PORT_MAPPING)
+ESPPORT1, ESPPORT2, ESPPORT3, ESPPORT4, ESPPORT5 = (os.getenv(name) for name in PORT_MAPPING)
 
 _RUNNER_CHANNEL = os.getenv('CHANNEL', '12')
 _RUNNER_NETWORKKEY = os.getenv('NETWORKKEY', '99112233445566778899aabbccddeeff')
@@ -777,6 +778,15 @@ def test_TCP_NAT64(Init_interface: bool, dut: tuple[IdfDut, IdfDut, IdfDut]) -> 
             f'{ESPPORT1}|{ESPPORT4}',
             id='h2-c5',
         ),
+        pytest.param(
+            'cli|sleepy',
+            2,
+            f'{os.path.join(os.path.dirname(__file__), "ot_cli")}'
+            f'|{os.path.join(os.path.dirname(__file__), "ot_sleepy_device/light_sleep")}',
+            'esp32h2|esp32s31',
+            f'{ESPPORT1}|{ESPPORT5}',
+            id='h2-s31',
+        ),
     ],
     indirect=True,
 )
@@ -1158,9 +1168,9 @@ def test_ot_ssed_device(dut: tuple[IdfDut, IdfDut]) -> None:
         cli_rloc_addr = ':'.join(ocf.get_rloc_addr(leader).split(':')[:-1])
         ssed_address = f'{cli_rloc_addr}:{rloc16_decode_from_leader}'
 
-        ocf.ping_and_check(dut=leader, target=ssed_address, tx_total=10, timeout=6)
+        ocf.ping_and_check(dut=leader, target=ssed_address, tx_total=10, timeout=6, size_range=(10, 70))
         time.sleep(random.randint(5, 20))
-        ocf.ping_and_check(dut=leader, target=ssed_address, tx_total=10, timeout=6)
+        ocf.ping_and_check(dut=leader, target=ssed_address, tx_total=10, timeout=6, size_range=(100, 200))
     finally:
         ocf.execute_command(leader, 'factoryreset')
         ocf.hardreset_dut(ssed_device)

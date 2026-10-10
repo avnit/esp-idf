@@ -425,7 +425,7 @@ typedef enum {
  * @brief Type of FLASH clock source.
  */
 typedef enum {
-    FLASH_CLK_SRC_DEFAULT = SOC_MOD_CLK_BBPLL,        /*!< Select SOC_MOD_CLK_BBPLL as FLASH source clock */
+    FLASH_CLK_SRC_DEFAULT = SOC_MOD_CLK_CPLL,         /*!< Select SOC_MOD_CLK_CPLL as FLASH source clock */
     FLASH_CLK_SRC_XTAL = SOC_MOD_CLK_XTAL,            /*!< Select SOC_MOD_CLK_XTAL as FLASH source clock */
     FLASH_CLK_SRC_CPLL = SOC_MOD_CLK_CPLL,            /*!< Select SOC_MOD_CLK_CPLL as FLASH source clock */
     FLASH_CLK_SRC_BBPLL = SOC_MOD_CLK_BBPLL,          /*!< Select SOC_MOD_CLK_BBPLL as FLASH source clock */
@@ -487,6 +487,44 @@ typedef enum {
     ANA_CMPR_CLK_SRC_REF_F80M = SOC_MOD_CLK_REF_F80M, /*!< Select REF_F80M as the source clock */
     ANA_CMPR_CLK_SRC_DEFAULT = SOC_MOD_CLK_REF_F80M,  /*!< Select REF_F80M as the default clock choice */
 } soc_periph_ana_cmpr_clk_src_t;
+
+////////////////////////////////////////////////////DAC/////////////////////////////////////////////////////////////////
+/**
+ * @note ESP32-S31 has a single DAC functional clock shared by the DMA (continuous) path
+ *       and the Sintx (cosine) path. The two source enums below are kept separate to
+ *       match the existing DAC driver APIs.
+ */
+
+/**
+ * @brief Array initializer for all supported clock sources of DAC digital controller
+ */
+#define SOC_DAC_DIGI_CLKS {SOC_MOD_CLK_XTAL, SOC_MOD_CLK_RTC_FAST}
+
+/**
+ * @brief DAC digital controller clock source
+ *
+ */
+typedef enum {
+    DAC_DIGI_CLK_SRC_XTAL = SOC_MOD_CLK_XTAL,           /*!< Select XTAL as the source clock */
+    DAC_DIGI_CLK_SRC_LP_FAST = SOC_MOD_CLK_RTC_FAST,    /*!< Select LP_FAST as the source clock */
+    DAC_DIGI_CLK_SRC_DEFAULT = SOC_MOD_CLK_XTAL,        /*!< Select XTAL as the default source clock */
+} soc_periph_dac_digi_clk_src_t;
+
+/**
+ * @brief Array initializer for all supported clock sources of DAC cosine wave generator
+ */
+#define SOC_DAC_COSINE_CLKS {SOC_MOD_CLK_XTAL, SOC_MOD_CLK_RTC_FAST}
+
+/**
+ * @brief DAC cosine wave generator clock source
+ *
+ * @note On ESP32S31, the LP_DAC Sintx path is clocked by the DAC functional clock.
+ */
+typedef enum {
+    DAC_COSINE_CLK_SRC_XTAL = SOC_MOD_CLK_XTAL,         /*!< Select XTAL as the source clock */
+    DAC_COSINE_CLK_SRC_LP_FAST = SOC_MOD_CLK_RTC_FAST,  /*!< Select LP_FAST as the source clock */
+    DAC_COSINE_CLK_SRC_DEFAULT = SOC_MOD_CLK_XTAL,      /*!< Select XTAL as the default source clock */
+} soc_periph_dac_cosine_clk_src_t;
 
 //////////////////////////////////////////////////TWAI//////////////////////////////////////////////////////////////////
 

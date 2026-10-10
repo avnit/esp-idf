@@ -144,7 +144,7 @@ esp_err_t esp_cam_new_csi_ctlr(const esp_cam_ctlr_csi_config_t *config, esp_cam_
 #endif
 
     mipi_csi_phy_clock_source_t clk_src = !config->clk_src ? MIPI_CSI_PHY_CLK_SRC_DEFAULT : config->clk_src;
-    ESP_GOTO_ON_ERROR(esp_clk_tree_enable_src((soc_module_clk_t)clk_src, true), err, TAG, "clock source enable failed");
+    ESP_GOTO_ON_ERROR(esp_clk_tree_acquire_src((soc_module_clk_t)clk_src), err, TAG, "clock source enable failed");
     PERIPH_RCC_ATOMIC() {
         // phy clock source setting
         mipi_csi_ll_set_phy_clock_source(ctlr->csi_id, clk_src);
@@ -381,16 +381,16 @@ IRAM_ATTR static bool csi_dma_trans_done_callback(dw_gdma_channel_handle_t chan,
     csi_dma_transfer_config = (dw_gdma_block_transfer_config_t) {
         .src = {
             .addr = MIPI_CSI_BRG_MEM_BASE,
-            .burst_mode = DW_GDMA_BURST_MODE_FIXED,
-            .burst_items = DW_GDMA_BURST_ITEMS_512,
-            .burst_len = 16,
+            .addr_inc_mode = DW_GDMA_ADDR_INC_MODE_FIXED,
+            .burst_size = DW_GDMA_BURST_SIZE_512,
+            .axi_burst_len = 16,
             .width = DW_GDMA_TRANS_WIDTH_64,
         },
         .dst = {
             .addr = 0,
-            .burst_mode = DW_GDMA_BURST_MODE_INCREMENT,
-            .burst_items = DW_GDMA_BURST_ITEMS_512,
-            .burst_len = 16,
+            .addr_inc_mode = DW_GDMA_ADDR_INC_MODE_INCREMENT,
+            .burst_size = DW_GDMA_BURST_SIZE_512,
+            .axi_burst_len = 16,
             .width = DW_GDMA_TRANS_WIDTH_64,
         },
         .size = ctlr->csi_transfer_size,
@@ -603,16 +603,16 @@ esp_err_t s_ctlr_csi_start(esp_cam_ctlr_handle_t handle)
     csi_dma_transfer_config = (dw_gdma_block_transfer_config_t) {
         .src = {
             .addr = MIPI_CSI_BRG_MEM_BASE,
-            .burst_mode = DW_GDMA_BURST_MODE_FIXED,
-            .burst_items = DW_GDMA_BURST_ITEMS_512,
-            .burst_len = 16,
+            .addr_inc_mode = DW_GDMA_ADDR_INC_MODE_FIXED,
+            .burst_size = DW_GDMA_BURST_SIZE_512,
+            .axi_burst_len = 16,
             .width = DW_GDMA_TRANS_WIDTH_64,
         },
         .dst = {
             .addr = (uint32_t)(trans.buffer),
-            .burst_mode = DW_GDMA_BURST_MODE_INCREMENT,
-            .burst_items = DW_GDMA_BURST_ITEMS_512,
-            .burst_len = 16,
+            .addr_inc_mode = DW_GDMA_ADDR_INC_MODE_INCREMENT,
+            .burst_size = DW_GDMA_BURST_SIZE_512,
+            .axi_burst_len = 16,
             .width = DW_GDMA_TRANS_WIDTH_64,
         },
         .size = ctlr->csi_transfer_size,

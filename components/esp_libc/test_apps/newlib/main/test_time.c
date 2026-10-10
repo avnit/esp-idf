@@ -113,6 +113,47 @@ TEST_CASE("test usleep basic functionality", "[newlib]")
     TEST_ASSERT_GREATER_OR_EQUAL(long_sleep_us, end - start);
 }
 
+static void check_nanosleep_duration(time_t sec, long nsec)
+{
+    const struct timespec req = { .tv_sec = sec, .tv_nsec = nsec };
+    // nanosleep() must sleep at least the requested time, rounded up to whole microseconds
+    const int64_t min_sleep_us = (int64_t) sec * 1000000 + (nsec + 999) / 1000;
+
+    int64_t start = esp_timer_get_time();
+    TEST_ASSERT_EQUAL(0, nanosleep(&req, NULL));
+    int64_t end = esp_timer_get_time();
+    printf("nanosleep: requested %d us, slept %d us\n", (int) min_sleep_us, (int)(end - start));
+    TEST_ASSERT_GREATER_OR_EQUAL_INT64(min_sleep_us, end - start);
+}
+
+static void check_nanosleep_einval(const struct timespec *req)
+{
+    errno = 0;
+    TEST_ASSERT_EQUAL(-1, nanosleep(req, NULL));
+    TEST_ASSERT_EQUAL(EINVAL, errno);
+}
+
+TEST_CASE("test nanosleep basic functionality", "[newlib]")
+{
+    const int us_per_tick = portTICK_PERIOD_MS * 1000;
+
+    // Test sub-tick sleep, with a sub-microsecond remainder that must be rounded up
+    check_nanosleep_duration(0, (us_per_tick / 4) * 1000L + 1);
+    // Test multi-tick sleep
+    check_nanosleep_duration(0, us_per_tick * 2 * 1000L);
+    // Test whole seconds plus a remainder
+    check_nanosleep_duration(2, 1000000L);
+
+    // Test invalid arguments
+    const struct timespec nsec_too_large = { .tv_sec = 0, .tv_nsec = 1000000000L };
+    const struct timespec nsec_negative = { .tv_sec = 0, .tv_nsec = -1 };
+    const struct timespec sec_negative = { .tv_sec = -1, .tv_nsec = 0 };
+    check_nanosleep_einval(NULL);
+    check_nanosleep_einval(&nsec_too_large);
+    check_nanosleep_einval(&nsec_negative);
+    check_nanosleep_einval(&sec_negative);
+}
+
 int realtime_adjtime_wrapper(const struct timeval *delta, struct timeval *outdelta, test_adjtime_mode_t mode, test_clock_adjtime_units_t units)
 {
     int ret = -1;
@@ -190,6 +231,18 @@ void test_adjtime_function(test_adjtime_mode_t mode, test_clock_adjtime_units_t 
         tv_delta.tv_sec = INT_MIN / 1000000L;
         tv_delta.tv_usec = 0;
         TEST_ASSERT_EQUAL(realtime_adjtime_wrapper(&tv_delta, &tv_outdelta, mode, units), -1);
+    }
+
+    // a multi-day delta must be rejected, not silently
+    // truncated into the 32-bit timex.offset (µs) field and applied as a small slew.
+    if (mode == TEST_ADJTIME_MODE_LEGACY) {
+        tv_delta.tv_sec = 400L * 24 * 60 * 60; // 400 days
+        tv_delta.tv_usec = 123456;
+        TEST_ASSERT_EQUAL(realtime_adjtime_wrapper(&tv_delta, NULL, mode, units), -1);
+
+        tv_delta.tv_sec = -400L * 24 * 60 * 60;
+        tv_delta.tv_usec = -123456;
+        TEST_ASSERT_EQUAL(realtime_adjtime_wrapper(&tv_delta, NULL, mode, units), -1);
     }
 
     tv_delta.tv_sec = 0;

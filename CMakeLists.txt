@@ -294,6 +294,15 @@ endif()
 if(CONFIG_COMPILER_LTO_LINKTIME AND NOT BOOTLOADER_BUILD AND NOT ESP_TEE_BUILD)
     list(APPEND link_options "-flto=auto")
 
+    # LTO generates code at link time, so the -ffunction-sections/-fdata-sections
+    # applied to compile_options doesn't reach it: the LTRANS recompilation takes
+    # its code generation options from the link command line. Without them the
+    # LTO partition is emitted as a single .text/.data, which defeats
+    # -Wl,--gc-sections (it can only drop whole sections) and keeps unreferenced
+    # functions in the image.
+    list(APPEND link_options "-ffunction-sections"
+                             "-fdata-sections")
+
     if(CONFIG_APP_REPRODUCIBLE_BUILD)
         # LTO generates code at link time, where the path remapping applied to
         # compile_options doesn't take effect, so pass it to the linker as well.
@@ -430,39 +439,12 @@ endif()
 
 # KASAN: exclude low-level / hardware-access components from instrumentation.
 # Apply the exclusion after add_subdirectory() so every target already exists.
-#
-# Rationale per bucket:
-#   - hal / soc / esp_rom + every esp_hal_* peripheral HAL: perform volatile
-#     MMIO accesses (outside the shadow window, so each check is a no-op but
-#     still pays the indirect call into __asan_load* / __asan_store*).
-#   - spi_flash: runs with the flash cache disabled.
-#   - esp_hw_support: RTC/PMU register access, runs with MSPI bus held.
-#   - bootloader_support: runs before kasan_init_shadow().
-#   - freertos: scheduler / ISR plumbing is too hot to instrument.
-#   - heap: walks its own TLSF metadata living inside the (poisoned) pool;
-#     instrumented metadata walks would self-trigger.  Shadow updates are
-#     handled explicitly via heap_kasan.c / heap_kasan_hooks.c, which are
-#     individually compiled with -fno-sanitize via set_source_files_properties.
+# The exclusion set itself is defined in tools/cmake/kasan.cmake and shared with
+# the Build system v2, which applies it in idf_build_library().
 if(CONFIG_COMPILER_KASAN AND NOT BOOTLOADER_BUILD)
-    # Match every esp_hal_* peripheral HAL component dynamically (instead of
-    # listing them one by one) so newly added HAL components stay excluded
-    # without revisiting this file.
+    include("${CMAKE_CURRENT_LIST_DIR}/tools/cmake/kasan.cmake")
     idf_build_get_property(__kasan_all_components BUILD_COMPONENTS)
-    set(__kasan_excluded_components "")
-    foreach(__kasan_c ${__kasan_all_components})
-        if(__kasan_c MATCHES "^esp_hal_")
-            list(APPEND __kasan_excluded_components ${__kasan_c})
-        endif()
-    endforeach()
-
-    list(APPEND __kasan_excluded_components
-        hal soc esp_rom
-        spi_flash
-        esp_hw_support
-        bootloader_support
-        freertos
-        heap
-    )
+    kasan_filter_excluded_components(__kasan_excluded_components ${__kasan_all_components})
 
     foreach(__kasan_comp ${__kasan_excluded_components})
         set(__kasan_lib "__idf_${__kasan_comp}")

@@ -31,7 +31,9 @@
 #include "esp_private/esp_mmu_map_private.h"
 #include "esp_private/esp_psram_impl.h"
 #include "esp_private/esp_psram_mspi.h"
+#include "esp_private/mspi_mem_barrier.h"
 #include "esp_private/startup_internal.h"
+#include "esp_private/esp_sys_event_app_init.h"
 #if SOC_SPIRAM_XIP_SUPPORTED
 #include "esp_private/mmu_psram_flash.h"
 #endif
@@ -673,6 +675,23 @@ esp_err_t esp_psram_extram_reserve_dma_pool(size_t size)
     }
     return ESP_OK;
 }
+
+#if CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL
+ESP_PRE_APP_MAIN_HANDLER_REGISTER(reserve_dma_pool, 110)
+{
+    (void)user_arg;
+    (void)ctx;
+    if (!esp_psram_is_initialized()) {
+        return ESP_OK;
+    }
+
+    esp_err_t err = esp_psram_extram_reserve_dma_pool(CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Could not reserve internal/DMA pool (error 0x%x)", err);
+    }
+    return err;
+}
+#endif
 
 bool IRAM_ATTR __attribute__((pure)) esp_psram_is_initialized(void)
 {

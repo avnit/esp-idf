@@ -68,7 +68,7 @@ class PanicTestDut(IdfDut):
         return self.target in ['esp32', 'esp32s3', 'esp32p4', 'esp32h4', 'esp32s31']
 
     def run_test_func(self, test_func_name: str) -> None:
-        if self.target == 'esp32p4' and not self.app.sdkconfig.get('ESP32P4_SELECTS_REV_LESS_V3'):
+        if self.target == 'esp32p4':
             self.write('\n')
         self.expect_exact('Enter test name:')
         self.write(test_func_name)
@@ -104,9 +104,16 @@ class PanicTestDut(IdfDut):
         result = self.expect(pattern, return_what_before_match=True).decode('utf-8')
         return result.strip()
 
-    def expect_gme(self, reason: str) -> None:
-        """Expect method for Guru Meditation Errors"""
-        self.expect_exact(f"Guru Meditation Error: Core  0 panic'ed ({reason})")
+    def expect_gme(self, reason: str, core: int | None = 0) -> None:
+        """Expect method for Guru Meditation Errors
+
+        Pass core=None to accept any core id, including the -1 reported for
+        faults which cannot be attributed to a single core.
+        """
+        if core is None:
+            self.expect(rf"Guru Meditation Error: Core\s+\S+ panic'ed \({re.escape(reason)}\)")
+        else:
+            self.expect_exact(f"Guru Meditation Error: Core  {core} panic'ed ({reason})")
 
     def expect_reg_dump(self, core: int | None = None) -> None:
         if core is None:
@@ -144,12 +151,18 @@ class PanicTestDut(IdfDut):
         if not self.coredump_output:
             self.coredump_output = open(output_file_name, 'w')
 
-        espcoredump_script = os.path.join(os.environ['IDF_PATH'], 'components', 'espcoredump', 'espcoredump.py')
+        prefix_map = os.path.join(self.app.binary_path, 'gdbinit', 'prefix_map')
         espcoredump_args = [
             sys.executable,
-            espcoredump_script,
-            '-b115200',
+            '-m',
+            'esp_coredump',
+            '--port',
+            self.serial.port,
+            '-b',
+            '115200',
             'info_corefile',
+            '--extra-gdbinit-file',
+            prefix_map,
         ]
         espcoredump_args += extra_args
         espcoredump_args.append(self.app.elf_file)
@@ -189,9 +202,7 @@ class PanicTestDut(IdfDut):
 
         output_file_name = os.path.join(self.logdir, 'coredump_uart_result.txt')
         coredump_elf_file = os.path.join(self.logdir, 'coredump_data.elf')
-        self._call_espcoredump(
-            ['--core-format', 'b64', '--core', coredump_file.name, '--save-core', coredump_elf_file], output_file_name
-        )
+        self._call_espcoredump(['-c', coredump_file.name, '-s', coredump_elf_file], output_file_name)
         if expected:
             self.expect_coredump(output_file_name, expected)
         return coredump_elf_file
@@ -200,7 +211,7 @@ class PanicTestDut(IdfDut):
         coredump_file_name = os.path.join(self.logdir, 'coredump_data.bin')
         logging.info('Writing flash binary core dump to %s', coredump_file_name)
         output_file_name = os.path.join(self.logdir, 'coredump_flash_result.txt')
-        self._call_espcoredump(['--core-format', 'raw', '--save-core', coredump_file_name], output_file_name)
+        self._call_espcoredump(['-s', coredump_file_name], output_file_name)
         if expected:
             self.expect_coredump(output_file_name, expected)
         return coredump_file_name

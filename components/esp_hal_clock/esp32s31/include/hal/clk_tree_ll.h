@@ -18,13 +18,13 @@
 #include "soc/hp_alive_sys_struct.h"
 #include "hal/regi2c_ctrl.h"
 #include "soc/regi2c_apll.h"
+#include "soc/regi2c_mpll.h"
 #include "soc/pmu_reg.h"
 #include "hal/clkout_channel.h"
 #include "hal/assert.h"
 #include "hal/log.h"
 #include "esp32s31/rom/rtc.h"
 #include "hal/misc.h"
-
 #define MHZ                 (1000000)
 
 #define CLK_LL_PLL_8M_FREQ_MHZ     (8)
@@ -95,6 +95,7 @@ static inline __attribute__((always_inline)) void clk_ll_cpll_enable(void)
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_HIGH_XPD_CPLL | PMU_TIE_HIGH_XPD_CPLL_I2C);
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_HIGH_GLOBAL_CPLL_ICG);
     SET_PERI_REG_MASK(HP_ALIVE_SYS_HP_CLK_CTRL_REG, HP_ALIVE_SYS_HP_CPLL_300M_CLK_EN);
+    SET_PERI_REG_MASK(PMU_HP_ACTIVE_HP_CK_POWER_REG, PMU_HP_ACTIVE_XPD_CPLL_I2C | PMU_HP_ACTIVE_XPD_CPLL);
 }
 
 /**
@@ -105,6 +106,7 @@ static inline __attribute__((always_inline)) void clk_ll_cpll_disable(void)
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_LOW_GLOBAL_CPLL_ICG) ;
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_LOW_XPD_CPLL | PMU_TIE_LOW_XPD_CPLL_I2C);
     CLEAR_PERI_REG_MASK(HP_ALIVE_SYS_HP_CLK_CTRL_REG, HP_ALIVE_SYS_HP_CPLL_300M_CLK_EN);
+    CLEAR_PERI_REG_MASK(PMU_HP_ACTIVE_HP_CK_POWER_REG, PMU_HP_ACTIVE_XPD_CPLL_I2C | PMU_HP_ACTIVE_XPD_CPLL);
 }
 
 /**
@@ -115,6 +117,7 @@ static inline __attribute__((always_inline)) void clk_ll_xtalx2_enable(void)
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_0_REG, PMU_TIE_HIGH_XPD_XTALX2);
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_0_REG, PMU_TIE_HIGH_GLOBAL_XTALX2_ICG);
     SET_PERI_REG_MASK(HP_ALIVE_SYS_HP_CLK_CTRL_REG, HP_ALIVE_SYS_HP_XTALX2_80M_CLK_EN);
+    SET_PERI_REG_MASK(PMU_HP_ACTIVE_HP_CK_POWER_REG, PMU_HP_ACTIVE_XPD_XTALX2);
 }
 
 /**
@@ -125,6 +128,7 @@ static inline __attribute__((always_inline)) void clk_ll_xtalx2_disable(void)
     CLEAR_PERI_REG_MASK(HP_ALIVE_SYS_HP_CLK_CTRL_REG, HP_ALIVE_SYS_HP_XTALX2_80M_CLK_EN);
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_0_REG, PMU_TIE_LOW_GLOBAL_XTALX2_ICG);
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_0_REG, PMU_TIE_LOW_XPD_XTALX2);
+    CLEAR_PERI_REG_MASK(PMU_HP_ACTIVE_HP_CK_POWER_REG, PMU_HP_ACTIVE_XPD_XTALX2);
 }
 
 /**
@@ -156,6 +160,7 @@ static inline __attribute__((always_inline)) void clk_ll_bbpll_enable(void)
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_HIGH_XPD_BBPLL | PMU_TIE_HIGH_XPD_BBPLL_I2C);
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_HIGH_GLOBAL_BBPLL_ICG);
     SET_PERI_REG_MASK(HP_ALIVE_SYS_HP_CLK_CTRL_REG, HP_ALIVE_SYS_HP_SPLL_480M_CLK_EN);
+    SET_PERI_REG_MASK(PMU_HP_ACTIVE_HP_CK_POWER_REG, PMU_HP_ACTIVE_XPD_BBPLL_I2C | PMU_HP_ACTIVE_XPD_BBPLL);
 }
 
 /**
@@ -166,6 +171,7 @@ static inline __attribute__((always_inline)) void clk_ll_bbpll_disable(void)
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_LOW_GLOBAL_BBPLL_ICG) ;
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_LOW_XPD_BBPLL | PMU_TIE_LOW_XPD_BBPLL_I2C);
     CLEAR_PERI_REG_MASK(HP_ALIVE_SYS_HP_CLK_CTRL_REG, HP_ALIVE_SYS_HP_SPLL_480M_CLK_EN);
+    CLEAR_PERI_REG_MASK(PMU_HP_ACTIVE_HP_CK_POWER_REG, PMU_HP_ACTIVE_XPD_BBPLL_I2C | PMU_HP_ACTIVE_XPD_BBPLL);
 }
 
 /**
@@ -176,6 +182,7 @@ static inline __attribute__((always_inline)) void clk_ll_apll_enable(void)
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_HIGH_XPD_APLL | PMU_TIE_HIGH_XPD_APLL_I2C);
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_HIGH_GLOBAL_APLL_ICG);
     SET_PERI_REG_MASK(HP_ALIVE_SYS_HP_CLK_CTRL_REG, HP_ALIVE_SYS_HP_AUDIO_PLL_CLK_EN);
+    SET_PERI_REG_MASK(PMU_HP_ACTIVE_HP_CK_POWER_REG, PMU_HP_ACTIVE_XPD_APLL_I2C | PMU_HP_ACTIVE_XPD_APLL);
 }
 
 /**
@@ -186,6 +193,7 @@ static inline __attribute__((always_inline)) void clk_ll_apll_disable(void)
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_LOW_GLOBAL_APLL_ICG) ;
     SET_PERI_REG_MASK(PMU_IMM_HP_CK_POWER_1_REG, PMU_TIE_LOW_XPD_APLL | PMU_TIE_LOW_XPD_APLL_I2C);
     CLEAR_PERI_REG_MASK(HP_ALIVE_SYS_HP_CLK_CTRL_REG, HP_ALIVE_SYS_HP_AUDIO_PLL_CLK_EN);
+    CLEAR_PERI_REG_MASK(PMU_HP_ACTIVE_HP_CK_POWER_REG, PMU_HP_ACTIVE_XPD_APLL_I2C | PMU_HP_ACTIVE_XPD_APLL);
 }
 
 /**
@@ -479,23 +487,9 @@ static inline __attribute__((always_inline)) bool clk_ll_cpll_calibration_is_don
  */
 static inline __attribute__((always_inline)) uint32_t clk_ll_mpll_get_freq_mhz(uint32_t xtal_freq_mhz)
 {
-    uint8_t fb_div = REG_GET_FIELD(LP_AONCLKRST_MSPI_DIV_REG, LP_AONCLKRST_MSPI_FB_DIV);
-    return xtal_freq_mhz * (fb_div + 1) / 2;
-}
-
-/**
- * @brief Set MPLL frequency from XTAL source
- *
- * @param mpll_freq_mhz MPLL frequency, in MHz
- * @param xtal_freq_mhz XTAL frequency, in MHz
- */
-static inline __attribute__((always_inline)) void clk_ll_mpll_set_config(uint32_t mpll_freq_mhz, uint32_t xtal_freq_mhz)
-{
-    HAL_ASSERT(xtal_freq_mhz == SOC_XTAL_FREQ_40M);
-
-    uint8_t ref_div = 1;
-    uint8_t fb_div = mpll_freq_mhz * (ref_div + 1) / xtal_freq_mhz - 1;
-    REG_SET_FIELD(LP_AONCLKRST_MSPI_DIV_REG, LP_AONCLKRST_MSPI_FB_DIV, fb_div);
+    uint8_t div = REG_GET_FIELD(LP_AONCLKRST_MSPI_DIV_REG, LP_AONCLKRST_MSPI_FB_DIV);
+    uint8_t ref_div = REG_GET_FIELD(LP_AONCLKRST_MSPI_DIV_REG, LP_AONCLKRST_MSPI_REF_DIV);
+    return xtal_freq_mhz * (div + 1) / (ref_div + 1);
 }
 
 /**
@@ -522,6 +516,32 @@ static inline __attribute__((always_inline)) void clk_ll_mpll_calibration_stop(v
 static inline __attribute__((always_inline)) bool clk_ll_mpll_calibration_is_done(void)
 {
     return REG_GET_BIT(HP_SYS_CLKRST_ANA_PLL_CTRL0_REG, HP_SYS_CLKRST_REG_MSPI_CAL_END);
+}
+
+/**
+ * @brief Set MPLL frequency from XTAL source
+ *
+ * @param mpll_freq_mhz MPLL frequency, in MHz
+ * @param xtal_freq_mhz XTAL frequency, in MHz
+ */
+static inline __attribute__((always_inline)) void clk_ll_mpll_set_config(uint32_t mpll_freq_mhz, uint32_t xtal_freq_mhz)
+{
+    HAL_ASSERT(xtal_freq_mhz == SOC_XTAL_FREQ_40M);
+
+    REGI2C_WRITE_MASK(I2C_MPLL, I2C_MPLL_IR_CAL_EXT_CAP, 3);
+    REGI2C_WRITE_MASK(I2C_MPLL, I2C_MPLL_IR_CAL_ENX_CAP, 1);
+    REG_SET_FIELD(LP_AONCLKRST_MSPI_DIV_REG, LP_AONCLKRST_MSPI_FB_DIV, 9);
+    REGI2C_WRITE_MASK(I2C_MPLL, I2C_MPLL_DHREF, 3);
+
+    REGI2C_WRITE_MASK(I2C_MPLL, I2C_MPLL_IR_CAL_ENX_CAP, 0);
+    clk_ll_mpll_calibration_start();
+
+    uint8_t ref_div = 1;
+    uint8_t fb_div = mpll_freq_mhz * (ref_div + 1) / xtal_freq_mhz - 1;
+    REG_SET_FIELD(LP_AONCLKRST_MSPI_DIV_REG, LP_AONCLKRST_MSPI_FB_DIV, fb_div);
+
+    while (!clk_ll_mpll_calibration_is_done());
+    clk_ll_mpll_calibration_stop();
 }
 
 /**

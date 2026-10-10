@@ -496,16 +496,14 @@ tBTM_STATUS BTM_SetLocalDeviceName (char *p_name, tBT_DEVICE_TYPE name_type)
     if (name_type & BT_DEVICE_TYPE_BLE) {
         p = (UINT8 *)btm_cb.cfg.ble_bd_name;
         if (p != (UINT8 *)p_name) {
-            BCM_STRNCPY_S(btm_cb.cfg.ble_bd_name, p_name, BTM_MAX_LOC_BD_NAME_LEN);
-            btm_cb.cfg.ble_bd_name[BTM_MAX_LOC_BD_NAME_LEN] = '\0';
+            BCM_STRLCPY_S(btm_cb.cfg.ble_bd_name, p_name, BTM_MAX_LOC_BD_NAME_LEN + 1);
         }
     }
 #if (CLASSIC_BT_INCLUDED == TRUE)
     if (name_type & BT_DEVICE_TYPE_BREDR) {
         p = (UINT8 *)btm_cb.cfg.bredr_bd_name;
         if (p != (UINT8 *)p_name) {
-            BCM_STRNCPY_S(btm_cb.cfg.bredr_bd_name, p_name, BTM_MAX_LOC_BD_NAME_LEN);
-            btm_cb.cfg.bredr_bd_name[BTM_MAX_LOC_BD_NAME_LEN] = '\0';
+            BCM_STRLCPY_S(btm_cb.cfg.bredr_bd_name, p_name, BTM_MAX_LOC_BD_NAME_LEN + 1);
         }
     }
 #endif // #if (CLASSIC_BT_INCLUDED == TRUE)
@@ -1000,7 +998,6 @@ tBTM_STATUS BTM_WritePageTimeout(UINT16 timeout, tBTM_CMPL_CB *p_cb)
     return (BTM_CMD_STARTED);
 }
 
-#if (ENC_KEY_SIZE_CTRL_MODE != ENC_KEY_SIZE_CTRL_MODE_NONE)
 void btm_set_min_enc_key_size_complete(const UINT8 *p)
 {
     tBTM_SET_MIN_ENC_KEY_SIZE_RESULTS results;
@@ -1016,33 +1013,49 @@ void btm_set_min_enc_key_size_complete(const UINT8 *p)
 
 tBTM_STATUS BTM_SetMinEncKeySize(UINT8 key_size, tBTM_CMPL_CB *p_cb)
 {
-    BTM_TRACE_EVENT ("BTM: BTM_SetMinEncKeySize: key_size: %d.", key_size);
-
-    btm_cb.devcb.p_set_min_enc_key_size_cmpl_cb = p_cb;
     tBTM_STATUS status = BTM_NO_RESOURCES;
 
-#if (ENC_KEY_SIZE_CTRL_MODE == ENC_KEY_SIZE_CTRL_MODE_VSC)
-    /* Send the HCI command */
-    UINT8 param[1];
-    UINT8 *p = (UINT8 *)param;
-    UINT8_TO_STREAM(p, key_size);
-    status = BTM_VendorSpecificCommand(HCI_VENDOR_BT_SET_MIN_ENC_KEY_SIZE, 1, param, NULL);
-#else
-    if (btsnd_hcic_set_min_enc_key_size(key_size)) {
-        status = BTM_SUCCESS;
+    BTM_TRACE_EVENT ("BTM: BTM_SetMinEncKeySize: key_size: %d.", key_size);
+
+    if (!BTM_IsDeviceUp()) {
+        status = BTM_WRONG_MODE;
+        goto done;
     }
+
+    btm_cb.devcb.p_set_min_enc_key_size_cmpl_cb = p_cb;
+
+    if (controller_get_interface()->supports_set_min_enc_key_size()) {
+        if (btsnd_hcic_set_min_enc_key_size(key_size)) {
+            status = BTM_SUCCESS;
+        }
+    } else {
+#if (ESP_BT_CLASSIC_ENABLE_ENC_KEY_SIZE_CTRL_VSC == TRUE)
+        UINT8 param[1];
+        UINT8 *p = (UINT8 *)param;
+        UINT8_TO_STREAM(p, key_size);
+        status = BTM_VendorSpecificCommand(HCI_VENDOR_BT_SET_MIN_ENC_KEY_SIZE, 1, param, NULL);
+#else
+        status = BTM_MODE_UNSUPPORTED;
 #endif
+    }
+
+done:
     if (status != BTM_SUCCESS) {
         if (p_cb) {
             btm_cb.devcb.p_set_min_enc_key_size_cmpl_cb = NULL;
             tBTM_SET_MIN_ENC_KEY_SIZE_RESULTS results = {0};
-            results.hci_status = HCI_ERR_MEMORY_FULL;
+            if (status == BTM_MODE_UNSUPPORTED) {
+                results.hci_status = HCI_ERR_UNSUPPORTED_VALUE;
+            } else if (status == BTM_WRONG_MODE) {
+                results.hci_status = HCI_ERR_UNSPECIFIED;
+            } else {
+                results.hci_status = HCI_ERR_MEMORY_FULL;
+            }
             (*p_cb)(&results);
         }
     }
     return status;
 }
-#endif
 
 /*******************************************************************************
 **

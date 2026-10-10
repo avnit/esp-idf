@@ -44,6 +44,9 @@
 #if (BTC_SPP_INCLUDED == TRUE)
 #include "btc_spp.h"
 #endif /* #if (BTC_SPP_INCLUDED == TRUE) */
+#if (BTC_PAN_INCLUDED == TRUE)
+#include "btc_pan.h"
+#endif /* #if (BTC_PAN_INCLUDED == TRUE) */
 #if (BTC_L2CAP_INCLUDED == TRUE)
 #include "btc_l2cap.h"
 #endif /* #if (BTC_L2CAP_INCLUDED == TRUE) */
@@ -64,6 +67,9 @@
 #endif /* BTC_HH_INCLUDED */
 #if BTC_PBA_CLIENT_INCLUDED
 #include "btc_pba_client.h"
+#endif
+#if BTC_OPP_INCLUDED
+#include "btc_opp.h"
 #endif
 #endif /* #if CLASSIC_BT_INCLUDED */
 #endif
@@ -146,6 +152,9 @@ static const btc_func_t profile_tab[BTC_PID_NUM] = {
 #if (BTC_SPP_INCLUDED == TRUE)
     [BTC_PID_SPP]         = {btc_spp_call_handler,        btc_spp_cb_handler      },
 #endif /* #if (BTC_SPP_INCLUDED == TRUE) */
+#if (BTC_PAN_INCLUDED == TRUE)
+    [BTC_PID_PAN]         = {btc_pan_call_handler,        btc_pan_cb_handler      },
+#endif /* #if (BTC_PAN_INCLUDED == TRUE) */
 #if (BTC_L2CAP_INCLUDED == TRUE)
     [BTC_PID_L2CAP]       = {btc_l2cap_call_handler,      btc_l2cap_cb_handler    },
 #endif /* #if (BTC_L2CAP_INCLUDED == TRUE) */
@@ -166,6 +175,14 @@ static const btc_func_t profile_tab[BTC_PID_NUM] = {
 #endif
 #if BTC_PBA_CLIENT_INCLUDED
     [BTC_PID_PBA_CLIENT]  = {btc_pba_client_call_handler,  btc_pba_client_cb_handler},
+#endif
+#if BTC_OPP_INCLUDED
+#if BTC_OPP_SERVER_INCLUDED
+    [BTC_PID_OPP_SERVER]  = {btc_opp_server_call_handler,  btc_opp_server_cb_handler},
+#endif
+#if BTC_OPP_CLIENT_INCLUDED
+    [BTC_PID_OPP_CLIENT]  = {btc_opp_client_call_handler,  btc_opp_client_cb_handler},
+#endif
 #endif
 #endif /* #if CLASSIC_BT_INCLUDED */
 #endif

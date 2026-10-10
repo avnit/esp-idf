@@ -38,6 +38,7 @@ typedef union twai_ll_frame_buffer_t twai_hal_frame_t;
 #define TWAI_HAL_STATE_FLAG_BUS_OFF             (1 << 4)    //Bus-off due to TEC >= 256
 #define TWAI_HAL_STATE_FLAG_TX_BUFF_OCCUPIED    (1 << 5)    //Transmit buffer is occupied
 #define TWAI_HAL_STATE_FLAG_TX_NEED_RETRY       (1 << 7)    //TX needs to be restarted due to errata workarounds
+#define TWAI_HAL_STATE_FLAG_RESET_PENDING       (1 << 8)    //Reset quired but pend to after bus recovery complete
 
 //Interrupt Events
 #define TWAI_HAL_EVENT_BUS_OFF                  (1 << 0)
@@ -131,6 +132,20 @@ bool twai_hal_init(twai_hal_context_t *hal_ctx, const twai_hal_config_t *config)
  * @param hal_ctx Context of the HAL layer
  */
 void twai_hal_deinit(twai_hal_context_t *hal_ctx);
+
+/**
+ * @brief Get the hardware-dependent timing limits const
+ *
+ * @param t_const Pointer to timing limits const structure
+ */
+void twai_hal_get_timing_limits(twai_timing_limits_t *t_const);
+
+/**
+ * @brief Get the hardware-dependent timing limits const for FD data timing
+ *
+ * @param t_const_fd Pointer to timing limits const structure for FD data
+ */
+void twai_hal_get_timing_limits_fd(twai_timing_limits_t *t_const_fd);
 
 /**
  * @brief Configure the TWAI peripheral for legacy driver (deprecated)

@@ -213,6 +213,10 @@ static void rfcomm_server_mgmt_callback(UINT32 code, UINT16 rfc_handle, void* da
         }
         else {
             OBEX_TL_RFCOMM_TRACE_WARNING("found duplicate rfcomm connection\n");
+            if (sr_mgmt_cb_arg != NULL) {
+                sr_mgmt_cb_arg->accept = FALSE;
+            }
+            return;
         }
 
         p_ccb->initiator = FALSE;
@@ -227,6 +231,7 @@ static void rfcomm_server_mgmt_callback(UINT32 code, UINT16 rfc_handle, void* da
         msg.conn_income.peer_mtu = p_ccb->mtu;
         msg.conn_income.our_mtu = p_ccb->mtu;
         msg.conn_income.svr_hdl = (p_scb->allocated << 8);
+        bdcpy(msg.conn_income.addr, p_ccb->addr);
         obex_tl_rfcomm_cb.callback(OBEX_TL_CONN_INCOME_EVT, &msg);
     }
     else {

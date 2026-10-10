@@ -7,6 +7,8 @@ include(utilities)
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
 include(component_validation)
+# Shared with the Build system v1: single definition of the KASAN exclusion set.
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/kasan.cmake)
 
 #[[api
 .. cmakev2:function:: idf_build_set_property
@@ -88,12 +90,7 @@ function(idf_build_get_property variable property)
     cmake_parse_arguments(ARG "${options}" "${one_value}" "${multi_value}" ${ARGN})
 
     if("${property}" STREQUAL BUILD_COMPONENTS)
-        # BUILD_COMPONENTS is populated by the Build system v1 compatibility
-        # shim; reject only when running as a native Build system v2 project.
-        idf_build_get_property(_v1_compat __V1_COMPAT_SHIM)
-        if(NOT _v1_compat)
-            idf_die("Build property 'BUILD_COMPONENTS' is not supported")
-        endif()
+        idf_die("Build property 'BUILD_COMPONENTS' is not supported")
     endif()
 
     set(genexpr)
@@ -317,6 +314,57 @@ function(__idf_build_link_whole_archive target scope library)
     target_link_libraries(${target} ${scope} ${library})
 endfunction()
 
+#[[
+    __kasan_exclude_components(<library>)
+
+    Compile the low-level components linked to ``library`` without Kernel
+    Address Sanitizer instrumentation.
+
+    The exclusion set is defined once in ``tools/cmake/kasan.cmake`` and shared
+    with the Build system v1. Called from ``idf_build_library`` once
+    LIBRARY_COMPONENTS_LINKED is populated, so every component target already
+    exists and ``-fno-sanitize`` is appended after the global ``-fsanitize``
+    added while the component was processed, which is what makes it win.
+
+    A subproject that opted out of instrumentation altogether by setting the
+    SET_COMPILER_KASAN build property to NO never had ``-fsanitize`` applied, so
+    there is nothing to undo and this is a no-op there.
+#]]
+function(__kasan_exclude_components library)
+    idf_build_get_property(set_compiler_kasan SET_COMPILER_KASAN)
+    if(NOT DEFINED set_compiler_kasan OR set_compiler_kasan STREQUAL "")
+        set(set_compiler_kasan YES)
+    endif()
+    if(NOT CONFIG_COMPILER_KASAN OR NOT set_compiler_kasan)
+        return()
+    endif()
+
+    idf_library_get_property(components_linked "${library}" LIBRARY_COMPONENTS_LINKED)
+    kasan_filter_excluded_components(excluded ${components_linked})
+
+    foreach(component_name IN LISTS excluded)
+        idf_component_get_property(component_real_target "${component_name}" COMPONENT_REAL_TARGET)
+        idf_component_get_property(component_real_target_type "${component_name}" COMPONENT_REAL_TARGET_TYPE)
+
+        # Components that created no target, and INTERFACE libraries, have no
+        # sources to de-instrument. Adding an INTERFACE compile option would
+        # also propagate -fno-sanitize to every consumer, including the
+        # application under test.
+        if(NOT component_real_target OR "${component_real_target}" STREQUAL "NOTFOUND")
+            continue()
+        endif()
+        if(NOT "${component_real_target_type}" STREQUAL "STATIC_LIBRARY")
+            continue()
+        endif()
+
+        # idf_build_library may run more than once per configure. Appending the
+        # option again is harmless: CMake de-duplicates compile options, and
+        # every copy lands after the global -fsanitize added while the component
+        # was processed, so the surviving one still wins.
+        target_compile_options("${component_real_target}" PRIVATE "-fno-sanitize=kernel-address")
+    endforeach()
+endfunction()
+
 #[[api
 .. cmakev2:function:: idf_build_library
 
@@ -379,8 +427,10 @@ function(idf_build_library library)
     idf_build_get_property(include_directories INCLUDE_DIRECTORIES GENERATOR_EXPRESSION)
     target_include_directories("${library}" INTERFACE "${include_directories}")
 
-    # Add link options.
-    idf_build_get_property(link_options LINK_OPTIONS)
+    # Add link options. Read as a generator expression so that link options a
+    # component appends to the LINK_OPTIONS build property while it is processed
+    # below are included, not only those set before this point.
+    idf_build_get_property(link_options LINK_OPTIONS GENERATOR_EXPRESSION)
     target_link_options(${library} INTERFACE "${link_options}")
 
     # Include the requested components and link their interface targets to the
@@ -432,6 +482,13 @@ function(idf_build_library library)
         idf_library_set_property("${library}" LIBRARY_COMPONENTS_LINKED "${component_name}" APPEND)
         idf_library_set_property("${library}" LIBRARY_COMPONENT_INTERFACES_LINKED "${component_interface}" APPEND)
     endforeach()
+
+    # Kernel Address Sanitizer (CONFIG_COMPILER_KASAN): de-instrument the
+    # low-level components. Applied here, once the set of components linked to
+    # the library is known and every component target already exists, so that
+    # -fno-sanitize lands after the global -fsanitize added while the component
+    # was processed and therefore wins.
+    __kasan_exclude_components("${library}")
 
     # Collect linker fragment files from all components linked to the library
     # interface and store them in the __LDGEN_FRAGMENT_FILES files. This
@@ -875,7 +932,8 @@ endfunction()
         idf_build_generate_metadata([BINARY <binary>]
                                     [EXECUTABLE <executable>]
                                     [OUTPUT_FILE <file>]
-                                    [HINTS_OUTPUT_FILE <file>])
+                                    [HINTS_OUTPUT_FILE <file>]
+                                    [GDBINIT_DIR <dir>])
 
     *BINARY[in,opt]*
 
@@ -897,6 +955,15 @@ endfunction()
         behaviour prevents hint files from different binaries overwriting each
         other in multi-binary projects.
 
+    *GDBINIT_DIR[in,opt]*
+
+        Optional directory for the generated gdbinit files. If not provided,
+        the default location ``<build>/gdbinit`` is used. Multi-executable
+        projects should pass a distinct directory per executable so their
+        gdbinit files do not overwrite each other. Only the per-executable
+        ``symbols``, ``connect`` and ``py_extensions`` files are written here;
+        the project-wide ``prefix_map`` file stays under ``<build>/gdbinit``.
+
     Generate metadata for the specified ``binary`` or ``executable`` target and
     store it in the specified ``OUTPUT_FILE``. If no ``OUTPUT_FILE`` is
     provided, the default location ``<build>/project_description.json`` will be
@@ -904,7 +971,7 @@ endfunction()
 #]]
 function(idf_build_generate_metadata)
     set(options)
-    set(one_value OUTPUT_FILE BINARY EXECUTABLE HINTS_OUTPUT_FILE)
+    set(one_value OUTPUT_FILE BINARY EXECUTABLE HINTS_OUTPUT_FILE GDBINIT_DIR)
     set(multi_value)
     cmake_parse_arguments(ARG "${options}" "${one_value}" "${multi_value}" ${ARGN})
 
@@ -980,11 +1047,17 @@ function(idf_build_generate_metadata)
     idf_build_get_property(component_interfaces COMPONENT_INTERFACES)
     __get_components_metadata(COMPONENTS "${component_interfaces}" OUTPUT all_component_info_json)
 
-    __generate_gdbinit()
+    if(NOT DEFINED ARG_GDBINIT_DIR)
+        set(ARG_GDBINIT_DIR "${BUILD_DIR}/gdbinit")
+    endif()
+
+    # Each executable produces its own gdbinit output referencing its own ELF.
+    # __generate_gdbinit resolves the ELF path from the executable target.
+    __generate_gdbinit("${ARG_EXECUTABLE}" "${ARG_GDBINIT_DIR}"
+                       gdbinit_files_symbols gdbinit_files_py_extensions gdbinit_files_connect)
+    # prefix_map is project-wide (set once in project.cmake), unlike the
+    # per-executable files returned by __generate_gdbinit above.
     idf_build_get_property(gdbinit_files_prefix_map GDBINIT_FILES_PREFIX_MAP)
-    idf_build_get_property(gdbinit_files_symbols GDBINIT_FILES_SYMBOLS)
-    idf_build_get_property(gdbinit_files_py_extensions GDBINIT_FILES_PY_EXTENSIONS)
-    idf_build_get_property(gdbinit_files_connect GDBINIT_FILES_CONNECT)
     __get_openocd_options(debug_arguments_openocd)
 
     if(NOT DEFINED ARG_OUTPUT_FILE)

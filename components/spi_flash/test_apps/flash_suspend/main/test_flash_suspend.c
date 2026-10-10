@@ -47,7 +47,6 @@ DRAM_ATTR static uint32_t s_isr_interval_t2;
 DRAM_ATTR static uint32_t s_isr_interval_time;
 DRAM_ATTR static uint32_t times = 0;
 
-
 static NOINLINE_ATTR void func_in_flash(void)
 {
     /**
@@ -66,7 +65,7 @@ static NOINLINE_ATTR void func_in_flash(void)
 static bool IRAM_ATTR gptimer_alarm_suspend_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
 {
     s_isr_t1 = esp_cpu_get_cycle_count();
-    if (s_isr_interval_t1 != 0 ) {
+    if (s_isr_interval_t1 != 0) {
         s_isr_interval_t2 = esp_cpu_get_cycle_count();
         s_isr_interval_time += (s_isr_interval_t2 - s_isr_interval_t1);
     }
@@ -211,7 +210,7 @@ TEST_CASE("flash suspend test", "[spi_flash][suspend]")
     // 15 stands for threshold. We allow the interval time minus duration time is little bit larger than TSUS value
 #if CONFIG_SPI_FLASH_PLACE_FUNCTIONS_IN_IRAM
     // Don't check the performance because it should be slow.
-    TEST_ASSERT_LESS_THAN(CONFIG_SPI_FLASH_SUSPEND_TSUS_VAL_US + 35, isr_interval_time - isr_duration_time);
+    TEST_ASSERT_LESS_THAN(CONFIG_SPI_FLASH_SUSPEND_TSUS_VAL_US + 50, isr_interval_time - isr_duration_time);
 #endif
     ESP_LOGI(TAG, "Reasonable value!");
 

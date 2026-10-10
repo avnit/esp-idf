@@ -26,10 +26,14 @@ static uint8_t ext_adv_pattern[] = {
     0x0c, BLE_HS_ADV_TYPE_COMP_NAME, 'n', 'i', 'm', 'b', 'l', 'e', '_', 'p', 'r', 'p', 'h'
 };
 
+/* Offset of the complete-name AD structure inside ext_adv_pattern. Keep in sync
+ * with the pattern above; everything before it is flags plus service UUIDs. */
+#define EXT_ADV_PATTERN_NAME_OFFSET 11
+
 static uint8_t s_current_phy;
 #endif
 
-static const char *device_name = "nimble_prph";
+static char device_name[32] = "nimble_prph";
 
 #define NOTIFY_THROUGHPUT_PAYLOAD 495 /* Exactly aligns with 2 LL packets */
 #define MIN_REQUIRED_MBUF         10 /* Reserve mbufs for incoming ATT packets */
@@ -39,9 +43,12 @@ static const char *device_name = "nimble_prph";
 #define LL_PACKET_LENGTH          251
 #define MTU_DEF                   512
 
+#define NOTIFY_DISABLE_WAIT_MS    5000 /* Max wait for the central to clear the CCCD */
+
 static const char *tag = "bleprph_throughput";
 static TaskHandle_t notify_task_handle = NULL;
-static bool notify_state;
+static volatile bool notify_state;
+static volatile bool notify_stop_req;
 static int notify_test_time = 60;
 static uint16_t conn_handle;
 /* Dummy variable */
@@ -49,6 +56,20 @@ static uint8_t dummy;
 static uint8_t gatts_addr_type;
 
 static int gatts_gap_event(struct ble_gap_event *event, void *arg);
+
+#if CONFIG_EXAMPLE_CI_ID && CONFIG_EXAMPLE_CI_PIPELINE_ID
+static char *esp_ble_throughput_get_example_name(void)
+{
+    static char example_name[32];
+
+    memset(example_name, 0, sizeof(example_name));
+    snprintf(example_name, sizeof(example_name), "BE%02X_%05X_%02X",
+             CONFIG_EXAMPLE_CI_ID & 0xFF,
+             CONFIG_EXAMPLE_CI_PIPELINE_ID & 0xFFFFF,
+             CONFIG_IDF_FIRMWARE_CHIP_ID & 0xFF);
+    return example_name;
+}
+#endif
 
 #if CONFIG_EXAMPLE_EXTENDED_ADV
 void set_default_le_phy(uint8_t tx_phys_mask, uint8_t rx_phys_mask)
@@ -160,7 +181,23 @@ ext_bleprph_advertise(void)
     /* Set current phy; get mbuf for scan rsp data; fill mbuf with scan rsp data */
     params.primary_phy = BLE_HCI_LE_PHY_1M_PREF_MASK ;
     params.secondary_phy = BLE_HCI_LE_PHY_2M_PREF_MASK ;
+#if CONFIG_EXAMPLE_CI_ID && CONFIG_EXAMPLE_CI_PIPELINE_ID
+    /* Keep flags and service UUIDs, but advertise the CI-unique name so the
+     * paired central only connects to its own board. */
+    uint8_t ci_adv_data[BLE_HS_ADV_MAX_SZ];
+    uint8_t name_len = strlen(device_name);
+    uint8_t ci_adv_len = EXT_ADV_PATTERN_NAME_OFFSET;
+
+    memcpy(ci_adv_data, ext_adv_pattern, ci_adv_len);
+    ci_adv_data[ci_adv_len++] = name_len + 1;
+    ci_adv_data[ci_adv_len++] = BLE_HS_ADV_TYPE_COMP_NAME;
+    memcpy(&ci_adv_data[ci_adv_len], device_name, name_len);
+    ci_adv_len += name_len;
+
+    data = ext_get_data(ci_adv_data, ci_adv_len);
+#else
     data = ext_get_data(ext_adv_pattern, sizeof(ext_adv_pattern));
+#endif
     if (!data) {
         return;
     }
@@ -240,6 +277,18 @@ gatts_advertise(void)
 }
 #endif
 
+/* Called from the GATT write handler when the central asks the notify test to
+ * stop. Stopping the traffic before the CCCD is cleared keeps the link idle
+ * enough for the central's ATT write to complete. */
+void
+bleprph_notify_stop_req(void)
+{
+    notify_stop_req = true;
+    if (notify_task_handle) {
+        xTaskNotifyGive(notify_task_handle);
+    }
+}
+
 /* This function sends notifications to the client */
 static void
 notify_task(void *arg)
@@ -271,11 +320,12 @@ notify_task(void *arg)
                 break;
             }
 
-            while (notify_state && notify_time < (notify_test_time * 1000)) {
+            while (notify_state && !notify_stop_req &&
+                    notify_time < (notify_test_time * 1000)) {
                 ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
 
-                /* Stop immediately if central unsubscribed */
-                if (!notify_state) {
+                /* Stop immediately if central unsubscribed or asked us to stop */
+                if (!notify_state || notify_stop_req) {
                     break;
                 }
 
@@ -321,6 +371,17 @@ notify_task(void *arg)
                 end_time = esp_timer_get_time();
                 notify_time = (end_time - start_time) / 1000 ;
                 notify_count += 1;
+            }
+
+            /* Traffic has stopped; give the central time to clear the CCCD so
+             * that the results are printed after "Notifications disabled". */
+            if (notify_stop_req) {
+                int waited = 0;
+                while (notify_state && waited < NOTIFY_DISABLE_WAIT_MS) {
+                    vTaskDelay(100 / portTICK_PERIOD_MS);
+                    waited += 100;
+                }
+                notify_stop_req = false;
             }
 
             /* Use actual elapsed time for accurate throughput calculation */
@@ -379,6 +440,16 @@ gatts_gap_event(struct ble_gap_event *event, void *arg)
             ESP_LOGE(tag, "Set packet length failed");
         }
 
+#if CONFIG_EXAMPLE_CI_ID && CONFIG_EXAMPLE_CI_PIPELINE_ID
+        if (event->connect.status == 0 &&
+                ble_gap_conn_find(event->connect.conn_handle, &desc) == 0) {
+            const uint8_t *peer = desc.peer_id_addr.val;
+            ESP_LOGI(tag, "Connected, conn_handle %d, remote %02x:%02x:%02x:%02x:%02x:%02x",
+                     event->connect.conn_handle,
+                     peer[5], peer[4], peer[3], peer[2], peer[1], peer[0]);
+        }
+#endif
+
         conn_handle = event->connect.conn_handle;
         break;
 
@@ -387,6 +458,7 @@ gatts_gap_event(struct ble_gap_event *event, void *arg)
 
         /* Stop notification task loop cleanly */
         notify_state = false;
+        notify_stop_req = false;
         if (notify_task_handle) {
             xTaskNotifyGive(notify_task_handle);
         }
@@ -420,9 +492,11 @@ gatts_gap_event(struct ble_gap_event *event, void *arg)
         if (event->subscribe.attr_handle == notify_handle) {
             notify_state = event->subscribe.cur_notify;
             if (notify_state) {
-                /* Always reset test time on new subscription.
-                 * The central controls the actual duration by unsubscribing.
-                 * Use a large default so the peripheral never stops on its own. */
+                /* Always reset test time on new subscription. The central
+                 * controls the actual duration: it sends THRPT_CMD_STOP_NOTIFY
+                 * when done, so this is only an upper bound that keeps the
+                 * peripheral from notifying forever if that command is lost. */
+                notify_stop_req = false;
                 notify_test_time = 3600;
                 ESP_LOGI(tag, "Notifications enabled, test time = %d sec", notify_test_time);
                 /* Prime the notification pipeline to allow multiple in-flight
@@ -560,6 +634,13 @@ void app_main(void)
 #if MYNEWT_VAL(BLE_GATTS)
     rc = gatt_svr_init();
     assert(rc == 0);
+
+#if CONFIG_EXAMPLE_CI_ID && CONFIG_EXAMPLE_CI_PIPELINE_ID
+    strncpy(device_name, esp_ble_throughput_get_example_name(), sizeof(device_name) - 1);
+    device_name[sizeof(device_name) - 1] = '\0';
+    ESP_LOGI(tag, "DeviceName:%s, CIID:%02X, PipelineID:%05X, ChipID:%02X",
+             device_name, CONFIG_EXAMPLE_CI_ID, CONFIG_EXAMPLE_CI_PIPELINE_ID, CONFIG_IDF_FIRMWARE_CHIP_ID);
+#endif
 
 #if CONFIG_BT_NIMBLE_GAP_SERVICE
     /* Set the default device name */
